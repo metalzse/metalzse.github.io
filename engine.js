@@ -49,6 +49,39 @@ function toggleLearnedCharacters(text) {
   return true;
 }
 
+function learnedCharactersOutput() {
+  const characters = getLearnedCharacters();
+  if (!characters.length) return "";
+  return [
+    "已學會的字",
+    `共 ${characters.length} 字`,
+    "",
+    characters.join("\n"),
+    ""
+  ].join("\n");
+}
+
+function downloadText(filename, content) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportLearnedCharacters() {
+  const output = learnedCharactersOutput();
+  if (!output) {
+    window.alert("目前沒有已學會的字。");
+    return;
+  }
+  downloadText("learned-characters.txt", output);
+}
+
 function learnedCharacterAttributes(text, interactive) {
   const classes = ["story-text"];
   if (interactive) classes.push("learnable-text");
@@ -192,6 +225,14 @@ function renderRoom(roomId) {
   ` : "";
   const bagLabel = STORY.labels.myBag || [t("我","ㄨㄛˇ"), t("的","ㄉㄜ˙"), t("背","ㄅㄟ"), t("包","ㄅㄠ")];
   const bag = STORY.labels.bag ? `<h2>🎒 ${renderTokens(bagLabel)}</h2>${renderInventory()}` : "";
+  const exportLearnedLabel = STORY.labels.exportLearnedCharacters || [
+    t("輸","ㄕㄨ"),
+    t("出","ㄔㄨ"),
+    t("已","ㄧˇ"),
+    t("學","ㄒㄩㄝˊ"),
+    t("會","ㄏㄨㄟˋ"),
+    t("字","ㄗˋ")
+  ];
 
   app.innerHTML = `
     <h1>${renderTokens(room.title)}</h1>
@@ -208,6 +249,7 @@ function renderRoom(roomId) {
     <div class="toolbar">
       <button class="tool-button" id="restart">${renderTokens(STORY.labels.restart, { interactive: false })}</button>
       <button class="tool-button" id="resume">${renderTokens(STORY.labels.resume, { interactive: false })}</button>
+      <button class="tool-button" id="export-learned">${renderTokens(exportLearnedLabel, { interactive: false })}</button>
     </div>
   `;
 
@@ -233,6 +275,8 @@ function renderRoom(roomId) {
     const saved = localStorage.getItem(stateKey);
     renderRoom(saved && STORY.rooms[saved] ? saved : STORY.startRoom);
   });
+
+  document.getElementById("export-learned").addEventListener("click", exportLearnedCharacters);
 }
 
 function initialRoom() {
