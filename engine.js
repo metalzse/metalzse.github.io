@@ -219,18 +219,18 @@ function renderRoom(roomId) {
   const ending = room.ending ? `<p class="ending">${renderTokens(room.ending)}</p>` : "";
   const goalBox = room.id === STORY.startRoom && STORY.goal ? `
     <section class="content-box goal-box">
-      <h2>${renderTokens(STORY.labels.goal || [t("冒","ㄇㄠˋ"), t("險","ㄒㄧㄢˇ"), t("目","ㄇㄨˋ"), t("標","ㄅㄧㄠ")])}</h2>
+      <h2>${renderTokens(STORY.labels.goal || [t("冒","ㄇㄠˋ"), t("險","ㄒㄧㄢˇ"), t("目","ㄇㄨˋ"), t("標","ㄅㄧㄠ"), "："])}</h2>
       <p>${renderTokens(STORY.goal)}</p>
     </section>
   ` : "";
-  const bagLabel = STORY.labels.myBag || [t("我","ㄨㄛˇ"), t("的","ㄉㄜ˙"), t("背","ㄅㄟ"), t("包","ㄅㄠ")];
+  const bagLabel = STORY.labels.myBag || [t("我","ㄨㄛˇ"), t("的","ㄉㄜ˙"), t("背","ㄅㄟ"), t("包","ㄅㄠ"), "："];
   const bag = STORY.labels.bag ? `<h2>🎒 ${renderTokens(bagLabel)}</h2>${renderInventory()}` : "";
   const exportLearnedLabel = STORY.labels.exportLearnedCharacters || [
     t("輸","ㄕㄨ"),
     t("出","ㄔㄨ"),
-    t("已","ㄧˇ"),
     t("學","ㄒㄩㄝˊ"),
     t("會","ㄏㄨㄟˋ"),
+    t("的","ㄉㄜ˙"),
     t("字","ㄗˋ")
   ];
 
