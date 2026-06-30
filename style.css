@@ -3,7 +3,7 @@
   --bg: #f7f2df;
   --paper: #fffdf5;
   --border: #d8c690;
-  --text: #203040;
+  --text: #000;
   --door-bg: #eaf5ff;
   --door-border: #9bb7d4;
   --back-bg: #fff0d8;
@@ -170,6 +170,26 @@ rt {
   margin-bottom: 0;
 }
 
+.story-text {
+  color: var(--text);
+  border-radius: 6px;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.learnable-text {
+  cursor: pointer;
+}
+
+.learnable-text:hover {
+  background: rgba(31, 122, 68, .12);
+}
+
+.learned-text,
+.learned-text rt {
+  color: #146b3a;
+  font-weight: 700;
+}
+
 
 .content-box {
   border: 4px solid #d8c690;
@@ -231,4 +251,3 @@ rt {
 .bag-box p {
   margin-bottom: 0;
 }
-
