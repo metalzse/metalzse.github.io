@@ -1,6 +1,8 @@
 const stateKey = `adventure-progress:${STORY.id}`;
 const inventoryKey = `adventure-inventory:${STORY.id}`;
 const learnedCharactersKey = "adventure-learned-characters";
+const readingDifficultyKey = "adventure-reading-difficulty";
+const readingDifficulties = ["easy", "practice", "challenge"];
 
 function t(text, zhuyin) {
   return { text, zhuyin };
@@ -31,6 +33,24 @@ function hasLearnedCharacters(text) {
   if (!characters.length) return false;
   const learnedCharacters = getLearnedCharacters();
   return characters.every(character => learnedCharacters.includes(character));
+}
+
+function getReadingDifficulty() {
+  const saved = localStorage.getItem(readingDifficultyKey);
+  return readingDifficulties.includes(saved) ? saved : "easy";
+}
+
+function setReadingDifficulty(difficulty) {
+  if (!readingDifficulties.includes(difficulty)) return;
+  localStorage.setItem(readingDifficultyKey, difficulty);
+}
+
+function shouldShowZhuyin(text, options = {}) {
+  if (options.showZhuyin === false) return false;
+  const difficulty = getReadingDifficulty();
+  if (difficulty === "easy") return true;
+  if (difficulty === "challenge") return false;
+  return !hasLearnedCharacters(text);
 }
 
 function toggleLearnedCharacters(text) {
@@ -102,7 +122,9 @@ function makeRuby(token, options = {}) {
   if (!token || !token.text) return "";
   const interactive = options.interactive !== false;
   const attributes = learnedCharacterAttributes(token.text, interactive);
-  if (!token.zhuyin) return `<span ${attributes}>${escapeHtml(token.text)}</span>`;
+  if (!token.zhuyin || !shouldShowZhuyin(token.text, options)) {
+    return `<span ${attributes}>${escapeHtml(token.text)}</span>`;
+  }
   return `<ruby ${attributes}>${escapeHtml(token.text)}<rt>${escapeHtml(token.zhuyin)}</rt></ruby>`;
 }
 
@@ -179,6 +201,34 @@ function bindLearningClicks(app) {
   });
 }
 
+function difficultyLabel(difficulty) {
+  const labels = {
+    easy: [t("簡","ㄐㄧㄢˇ"), t("單","ㄉㄢ")],
+    practice: [t("練","ㄌㄧㄢˋ"), t("習","ㄒㄧˊ")],
+    challenge: [t("挑","ㄊㄧㄠˇ"), t("戰","ㄓㄢˋ")]
+  };
+  return labels[difficulty] || labels.easy;
+}
+
+function renderDifficultyControls() {
+  const current = getReadingDifficulty();
+  return `
+    <div class="difficulty-control" role="group" aria-label="閱讀難度">
+      <span class="difficulty-label">${renderTokens([t("難","ㄋㄢˊ"), t("度","ㄉㄨˋ"), "："], { interactive: false })}</span>
+      ${readingDifficulties.map(difficulty => `
+        <button
+          class="tool-button difficulty-button${difficulty === current ? " active" : ""}"
+          type="button"
+          data-difficulty="${difficulty}"
+          aria-pressed="${difficulty === current ? "true" : "false"}"
+        >
+          ${renderTokens(difficultyLabel(difficulty), { interactive: false })}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderRoom(roomId) {
   const app = document.getElementById("app");
   const room = STORY.rooms[roomId] || STORY.rooms[STORY.startRoom];
@@ -246,9 +296,9 @@ function renderRoom(roomId) {
     ${bag ? `<section class="content-box bag-box">${bag}</section>` : ""}
     ${doors ? `<h2>${renderTokens(STORY.labels.doors)}</h2>${doors}` : ""}
     ${back}
+    ${renderDifficultyControls()}
     <div class="toolbar">
       <button class="tool-button" id="restart">${renderTokens(STORY.labels.restart, { interactive: false })}</button>
-      <button class="tool-button" id="resume">${renderTokens(STORY.labels.resume, { interactive: false })}</button>
       <button class="tool-button" id="export-learned">${renderTokens(exportLearnedLabel, { interactive: false })}</button>
     </div>
   `;
@@ -271,12 +321,14 @@ function renderRoom(roomId) {
     history.replaceState(null, "", `#${STORY.startRoom}`);
   });
 
-  document.getElementById("resume").addEventListener("click", () => {
-    const saved = localStorage.getItem(stateKey);
-    renderRoom(saved && STORY.rooms[saved] ? saved : STORY.startRoom);
-  });
-
   document.getElementById("export-learned").addEventListener("click", exportLearnedCharacters);
+
+  app.querySelectorAll("[data-difficulty]").forEach(button => {
+    button.addEventListener("click", () => {
+      setReadingDifficulty(button.dataset.difficulty);
+      renderRoom(room.id);
+    });
+  });
 }
 
 function initialRoom() {

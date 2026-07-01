@@ -113,6 +113,26 @@ rt {
   cursor: pointer;
 }
 
+.difficulty-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+}
+
+.difficulty-label {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.difficulty-button.active {
+  border-color: #146b3a;
+  background: #e7f7ed;
+  color: #146b3a;
+  font-weight: 700;
+}
+
 .ending {
   font-size: 54px;
   font-weight: 700;
@@ -140,6 +160,10 @@ rt {
   }
   .small {
     font-size: 28px;
+  }
+  .difficulty-label,
+  .tool-button {
+    font-size: 26px;
   }
 }
 
