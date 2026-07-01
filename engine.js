@@ -4,8 +4,31 @@ const learnedCharactersKey = "adventure-learned-characters";
 const readingDifficultyKey = "adventure-reading-difficulty";
 const readingDifficulties = ["easy", "practice", "challenge"];
 
+const defaultLabels = {
+  goal: [t("冒","ㄇㄠˋ"), t("險","ㄒㄧㄢˇ"), t("目","ㄇㄨˋ"), t("標","ㄅㄧㄠ"), "："],
+  description: [t("地","ㄉㄧˋ"), t("點","ㄉㄧㄢˇ"), t("描","ㄇㄧㄠˊ"), t("述","ㄕㄨˋ")],
+  doors: [t("可","ㄎㄜˇ"), t("以","ㄧˇ"), t("走","ㄗㄡˇ"), t("的","ㄉㄜ˙"), t("門","ㄇㄣˊ")],
+  restart: [t("重","ㄔㄨㄥˊ"), t("新","ㄒㄧㄣ"), t("開","ㄎㄞ"), t("始","ㄕˇ")],
+  myBag: [t("我","ㄨㄛˇ"), t("的","ㄉㄜ˙"), t("背","ㄅㄟ"), t("包","ㄅㄠ"), "："],
+  emptyBag: [t("背","ㄅㄟ"), t("包","ㄅㄠ"), t("還","ㄏㄞˊ"), t("是","ㄕˋ"), t("空","ㄎㄨㄥ"), t("的","ㄉㄜ˙"), "。"],
+  gotItem: [t("你","ㄋㄧˇ"), t("得","ㄉㄜˊ"), t("到","ㄉㄠˋ"), t("了","ㄌㄜ˙")],
+  locked: [t("這","ㄓㄜˋ"), t("扇","ㄕㄢˋ"), t("門","ㄇㄣˊ"), t("還","ㄏㄞˊ"), t("不","ㄅㄨˋ"), t("能","ㄋㄥˊ"), t("開","ㄎㄞ"), "。"],
+  exportLearnedCharacters: [
+    t("輸","ㄕㄨ"),
+    t("出","ㄔㄨ"),
+    t("學","ㄒㄩㄝˊ"),
+    t("會","ㄏㄨㄟˋ"),
+    t("的","ㄉㄜ˙"),
+    t("字","ㄗˋ")
+  ]
+};
+
 function t(text, zhuyin) {
   return { text, zhuyin };
+}
+
+function label(key) {
+  return STORY.labels?.[key] || defaultLabels[key] || [];
 }
 
 function isChineseText(text) {
@@ -167,7 +190,7 @@ function renderInventory() {
   if (!STORY.items) return "";
   const items = getInventory();
   if (!items.length) {
-    return `<p class="small">${renderTokens(STORY.labels.emptyBag || [])}</p>`;
+    return `<p class="small">${renderTokens(label("emptyBag"))}</p>`;
   }
   return `<p class="small">${items.map(id => renderTokens(STORY.items[id]?.name || [id])).join("　")}</p>`;
 }
@@ -240,7 +263,7 @@ function renderRoom(roomId) {
   }
 
   const itemNote = room.givesItem && STORY.items ? `
-    <p class="item-note">🎒 ${renderTokens(STORY.labels.gotItem)} ${renderTokens(STORY.items[room.givesItem].name)}</p>
+    <p class="item-note">🎒 ${renderTokens(label("gotItem"))} ${renderTokens(STORY.items[room.givesItem].name)}</p>
   ` : "";
 
   const doors = (room.doors || []).map(door => {
@@ -248,7 +271,7 @@ function renderRoom(roomId) {
       return `
         <div class="door locked">
           <strong>${renderTokens(door.name)}</strong><br>
-          <span class="small">${renderTokens(door.lockedDescription || STORY.labels.locked)}</span>
+          <span class="small">${renderTokens(door.lockedDescription || label("locked"))}</span>
         </div>
       `;
     }
@@ -269,20 +292,11 @@ function renderRoom(roomId) {
   const ending = room.ending ? `<p class="ending">${renderTokens(room.ending)}</p>` : "";
   const goalBox = room.id === STORY.startRoom && STORY.goal ? `
     <section class="content-box goal-box">
-      <h2>${renderTokens(STORY.labels.goal || [t("冒","ㄇㄠˋ"), t("險","ㄒㄧㄢˇ"), t("目","ㄇㄨˋ"), t("標","ㄅㄧㄠ"), "："])}</h2>
+      <h2>${renderTokens(label("goal"))}</h2>
       <p>${renderTokens(STORY.goal)}</p>
     </section>
   ` : "";
-  const bagLabel = STORY.labels.myBag || [t("我","ㄨㄛˇ"), t("的","ㄉㄜ˙"), t("背","ㄅㄟ"), t("包","ㄅㄠ"), "："];
-  const bag = STORY.labels.bag ? `<h2>🎒 ${renderTokens(bagLabel)}</h2>${renderInventory()}` : "";
-  const exportLearnedLabel = STORY.labels.exportLearnedCharacters || [
-    t("輸","ㄕㄨ"),
-    t("出","ㄔㄨ"),
-    t("學","ㄒㄩㄝˊ"),
-    t("會","ㄏㄨㄟˋ"),
-    t("的","ㄉㄜ˙"),
-    t("字","ㄗˋ")
-  ];
+  const bag = STORY.items ? `<h2>🎒 ${renderTokens(label("myBag"))}</h2>${renderInventory()}` : "";
 
   app.innerHTML = `
     <header class="page-header">
@@ -297,11 +311,11 @@ function renderRoom(roomId) {
     ${itemNote}
     ${ending}
     ${bag ? `<section class="content-box bag-box">${bag}</section>` : ""}
-    ${doors ? `<h2>${renderTokens(STORY.labels.doors)}</h2>${doors}` : ""}
+    ${doors ? `<h2>${renderTokens(label("doors"))}</h2>${doors}` : ""}
     ${back}
     <div class="toolbar">
-      <button class="tool-button" id="restart">${renderTokens(STORY.labels.restart, { interactive: false })}</button>
-      <button class="tool-button" id="export-learned">${renderTokens(exportLearnedLabel, { interactive: false })}</button>
+      <button class="tool-button" id="restart">${renderTokens(label("restart"), { interactive: false })}</button>
+      <button class="tool-button" id="export-learned">${renderTokens(label("exportLearnedCharacters"), { interactive: false })}</button>
     </div>
   `;
 

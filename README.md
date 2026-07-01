@@ -27,7 +27,7 @@
 
 要製作新的故事，主要需要替換 `story.js`。
 
-新的 `story.js` 需要定義一個 `STORY` 物件，提供故事 ID、起始地點、介面文字、道具與房間資料。`engine.js` 會讀取這些資料並自動渲染畫面。
+新的 `story.js` 需要定義一個 `STORY` 物件，提供故事 ID、起始地點、故事目標、道具與房間資料。`engine.js` 會讀取這些資料並自動渲染畫面。
 
 基本結構如下：
 
@@ -35,14 +35,7 @@
 const STORY = {
   id: "my-story-id",
   startRoom: "start",
-  labels: {
-    doors: [],
-    restart: [],
-    bag: [],
-    emptyBag: [],
-    gotItem: [],
-    locked: []
-  },
+  goal: [],
   items: {
     item_id: {
       name: []
@@ -58,6 +51,10 @@ const STORY = {
   }
 };
 ```
+
+`冒險目標：`、`可以走的門`、`我的背包：`、`重新開始` 等標準介面文字由 `engine.js` 提供。通常不需要放在 `story.js`。
+
+如果某個故事真的需要改變介面文字，可以在 `STORY` 裡加上選用的 `labels` 覆寫特定項目。
 
 故事文字可以使用 `t("字", "注音")` 來加上注音，也可以直接放一般字串。
 
