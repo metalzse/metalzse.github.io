@@ -285,6 +285,9 @@ function renderRoom(roomId) {
   ];
 
   app.innerHTML = `
+    <header class="page-header">
+      ${renderDifficultyControls()}
+    </header>
     <h1>${renderTokens(room.title)}</h1>
     ${goalBox}
     <section class="content-box description-box">
@@ -296,7 +299,6 @@ function renderRoom(roomId) {
     ${bag ? `<section class="content-box bag-box">${bag}</section>` : ""}
     ${doors ? `<h2>${renderTokens(STORY.labels.doors)}</h2>${doors}` : ""}
     ${back}
-    ${renderDifficultyControls()}
     <div class="toolbar">
       <button class="tool-button" id="restart">${renderTokens(STORY.labels.restart, { interactive: false })}</button>
       <button class="tool-button" id="export-learned">${renderTokens(exportLearnedLabel, { interactive: false })}</button>

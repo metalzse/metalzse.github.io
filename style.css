@@ -113,12 +113,16 @@ rt {
   cursor: pointer;
 }
 
+.page-header {
+  margin-bottom: 20px;
+}
+
 .difficulty-control {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 28px;
+  margin: 0;
 }
 
 .difficulty-label {
