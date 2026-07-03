@@ -2,6 +2,7 @@ const stateKey = `adventure-progress:${STORY.id}`;
 const inventoryKey = `adventure-inventory:${STORY.id}`;
 const learnedCharactersKey = "adventure-learned-characters";
 const readingDifficultyKey = "adventure-reading-difficulty";
+const gameInfoSeenKey = "adventure-game-info-version";
 const readingDifficulties = ["easy", "practice", "challenge"];
 
 const defaultLabels = {
@@ -69,6 +70,7 @@ function setReadingDifficulty(difficulty) {
 }
 
 function shouldShowZhuyin(text, options = {}) {
+  if (options.showZhuyin === true) return true;
   if (options.showZhuyin === false) return false;
   const difficulty = getReadingDifficulty();
   if (difficulty === "easy") return true;
@@ -233,11 +235,12 @@ function difficultyLabel(difficulty) {
   return labels[difficulty] || labels.easy;
 }
 
-function renderDifficultyControls() {
+function renderDifficultyControls(options = {}) {
   const current = getReadingDifficulty();
+  const renderOptions = { interactive: false, ...options };
   return `
     <div class="difficulty-control" role="group" aria-label="閱讀難度">
-      <span class="difficulty-label">${renderTokens([t("難","ㄋㄢˊ"), t("度","ㄉㄨˋ"), "："], { interactive: false })}</span>
+      <span class="difficulty-label">${renderTokens([t("難","ㄋㄢˊ"), t("度","ㄉㄨˋ"), "："], renderOptions)}</span>
       ${readingDifficulties.map(difficulty => `
         <button
           class="tool-button difficulty-button${difficulty === current ? " active" : ""}"
@@ -245,11 +248,109 @@ function renderDifficultyControls() {
           data-difficulty="${difficulty}"
           aria-pressed="${difficulty === current ? "true" : "false"}"
         >
-          ${renderTokens(difficultyLabel(difficulty), { interactive: false })}
+          ${renderTokens(difficultyLabel(difficulty), renderOptions)}
         </button>
       `).join("")}
     </div>
   `;
+}
+
+function updateDifficultyControls(root) {
+  root.querySelectorAll("[data-difficulty]").forEach(button => {
+    const active = button.dataset.difficulty === getReadingDifficulty();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function bindDifficultyControls(root, onChange) {
+  root.querySelectorAll("[data-difficulty]").forEach(button => {
+    button.addEventListener("click", () => {
+      setReadingDifficulty(button.dataset.difficulty);
+      updateDifficultyControls(document);
+      if (onChange) onChange(button.dataset.difficulty);
+    });
+  });
+}
+
+function gameInfoVersion() {
+  return typeof GAME_INFO === "object" && GAME_INFO ? GAME_INFO.version || "default" : "";
+}
+
+function shouldShowGameInfo() {
+  const version = gameInfoVersion();
+  return Boolean(version) && localStorage.getItem(gameInfoSeenKey) !== version;
+}
+
+function markGameInfoSeen() {
+  const version = gameInfoVersion();
+  if (version) localStorage.setItem(gameInfoSeenKey, version);
+}
+
+function renderGameInfoSection(section) {
+  return `
+    <section class="game-info-section">
+      <h3>${renderTokens(section.heading || [], { interactive: false, showZhuyin: true })}</h3>
+      ${(section.body || []).map(paragraph => `
+        <p>${renderTokens(paragraph, { interactive: false, showZhuyin: true })}</p>
+      `).join("")}
+    </section>
+  `;
+}
+
+function showGameInfoDialog() {
+  if (typeof GAME_INFO !== "object" || !GAME_INFO) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "game-info-overlay";
+  overlay.setAttribute("role", "presentation");
+  overlay.innerHTML = `
+    <section class="game-info-dialog" role="dialog" aria-modal="true" aria-labelledby="game-info-title">
+      <h2 id="game-info-title">${renderTokens(GAME_INFO.title || [], { interactive: false, showZhuyin: true })}</h2>
+      <div class="game-info-body">
+        ${(GAME_INFO.sections || []).map(renderGameInfoSection).join("")}
+      </div>
+      ${renderDifficultyControls({ showZhuyin: true })}
+      <div class="game-info-actions">
+        <button class="tool-button primary-button" id="game-info-close" type="button">
+          ${renderTokens(GAME_INFO.closeLabel || [t("開","ㄎㄞ"), t("始","ㄕˇ")], { interactive: false, showZhuyin: true })}
+        </button>
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+  const dialog = overlay.querySelector(".game-info-dialog");
+  const closeButton = overlay.querySelector("#game-info-close");
+
+  bindDifficultyControls(overlay, () => {
+    const currentRoom = localStorage.getItem(stateKey);
+    renderRoom(currentRoom && STORY.rooms[currentRoom] ? currentRoom : STORY.startRoom);
+    updateDifficultyControls(document);
+  });
+
+  function closeGameInfoDialog() {
+    markGameInfoSeen();
+    overlay.remove();
+    document.removeEventListener("keydown", closeOnEscape);
+  }
+
+  function closeOnEscape(event) {
+    if (event.key !== "Escape" || !document.body.contains(overlay)) return;
+    closeGameInfoDialog();
+  }
+
+  closeButton.addEventListener("click", closeGameInfoDialog);
+
+  overlay.addEventListener("click", event => {
+    if (event.target !== overlay) return;
+    closeGameInfoDialog();
+  });
+
+  document.addEventListener("keydown", closeOnEscape);
+
+  closeButton.focus();
+  dialog.scrollTop = 0;
 }
 
 function renderRoom(roomId) {
@@ -339,12 +440,7 @@ function renderRoom(roomId) {
 
   document.getElementById("export-learned").addEventListener("click", exportLearnedCharacters);
 
-  app.querySelectorAll("[data-difficulty]").forEach(button => {
-    button.addEventListener("click", () => {
-      setReadingDifficulty(button.dataset.difficulty);
-      renderRoom(room.id);
-    });
-  });
+  bindDifficultyControls(app, () => renderRoom(room.id));
 }
 
 function initialRoom() {
@@ -361,3 +457,4 @@ window.addEventListener("hashchange", () => {
 });
 
 renderRoom(initialRoom());
+if (shouldShowGameInfo()) showGameInfoDialog();
