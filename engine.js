@@ -127,10 +127,11 @@ function exportLearnedCharacters() {
   downloadText("learned-characters.txt", output);
 }
 
-function learnedCharacterAttributes(text, interactive) {
+function learnedCharacterAttributes(text, interactive, options = {}) {
   const classes = ["story-text"];
   if (interactive) classes.push("learnable-text");
   if (hasLearnedCharacters(text)) classes.push("learned-text");
+  if (options.hasZhuyin && !shouldShowZhuyin(text, options)) classes.push("zhuyin-hidden");
   return `class="${classes.join(" ")}" data-learn-text="${escapeHtml(text)}"`;
 }
 
@@ -138,7 +139,7 @@ function makePlainText(text, options = {}) {
   const interactive = options.interactive !== false;
   return Array.from(String(text)).map(char => {
     if (!isChineseText(char)) return escapeHtml(char);
-    return `<span ${learnedCharacterAttributes(char, interactive)}>${escapeHtml(char)}</span>`;
+    return `<span ${learnedCharacterAttributes(char, interactive, options)}>${escapeHtml(char)}</span>`;
   }).join("");
 }
 
@@ -146,10 +147,8 @@ function makeRuby(token, options = {}) {
   if (typeof token === "string") return makePlainText(token, options);
   if (!token || !token.text) return "";
   const interactive = options.interactive !== false;
-  const attributes = learnedCharacterAttributes(token.text, interactive);
-  if (!token.zhuyin || !shouldShowZhuyin(token.text, options)) {
-    return `<span ${attributes}>${escapeHtml(token.text)}</span>`;
-  }
+  const attributes = learnedCharacterAttributes(token.text, interactive, { ...options, hasZhuyin: Boolean(token.zhuyin) });
+  if (!token.zhuyin) return `<span ${attributes}>${escapeHtml(token.text)}</span>`;
   return `<ruby ${attributes}>${escapeHtml(token.text)}<rt>${escapeHtml(token.zhuyin)}</rt></ruby>`;
 }
 
@@ -209,7 +208,9 @@ function scrollToTop() {
 
 function syncLearnedCharacters(app) {
   app.querySelectorAll("[data-learn-text]").forEach(element => {
-    element.classList.toggle("learned-text", hasLearnedCharacters(element.dataset.learnText));
+    const text = element.dataset.learnText;
+    element.classList.toggle("learned-text", hasLearnedCharacters(text));
+    element.classList.toggle("zhuyin-hidden", Boolean(element.querySelector("rt")) && !shouldShowZhuyin(text));
   });
 }
 

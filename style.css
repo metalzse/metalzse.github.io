@@ -297,6 +297,10 @@ rt {
   background: rgba(31, 122, 68, .12);
 }
 
+.zhuyin-hidden rt {
+  display: none;
+}
+
 .learned-text,
 .learned-text rt {
   color: #146b3a;
