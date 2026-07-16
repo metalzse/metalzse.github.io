@@ -24,81 +24,14 @@ const defaultLabels = {
   ]
 };
 
-const homeLabels = {
-  subtitle: [
-    t("請","ㄑㄧㄥˇ"),
-    t("選","ㄒㄩㄢˇ"),
-    t("擇","ㄗㄜˊ"),
-    t("要","ㄧㄠˋ"),
-    t("使","ㄕˇ"),
-    t("用","ㄩㄥˋ"),
-    t("的","ㄉㄜ˙"),
-    t("功","ㄍㄨㄥ"),
-    t("能","ㄋㄥˊ"),
-    "。"
-  ],
-  storyTitle: [
-    t("注","ㄓㄨˋ"),
-    t("音","ㄧㄣ"),
-    t("冒","ㄇㄠˋ"),
-    t("險","ㄒㄧㄢˇ"),
-    t("故","ㄍㄨˋ"),
-    t("事","ㄕˋ")
-  ],
-  storyDescription: [
-    t("讀","ㄉㄨˊ"),
-    t("故","ㄍㄨˋ"),
-    t("事","ㄕˋ"),
-    "，",
-    t("找","ㄓㄠˇ"),
-    t("門","ㄇㄣˊ"),
-    "，",
-    t("完","ㄨㄢˊ"),
-    t("成","ㄔㄥˊ"),
-    t("任","ㄖㄣˋ"),
-    t("務","ㄨˋ"),
-    "。"
-  ],
-  flashcardTitle: [
-    t("注","ㄓㄨˋ"),
-    t("音","ㄧㄣ"),
-    t("練","ㄌㄧㄢˋ"),
-    t("習","ㄒㄧˊ"),
-    t("卡","ㄎㄚˇ")
-  ],
-  flashcardDescription: [
-    t("隨","ㄙㄨㄟˊ"),
-    t("機","ㄐㄧ"),
-    t("練","ㄌㄧㄢˋ"),
-    t("習","ㄒㄧˊ"),
-    "37",
-    t("個","ㄍㄜˋ"),
-    t("注","ㄓㄨˋ"),
-    t("音","ㄧㄣ"),
-    "，",
-    t("記","ㄐㄧˋ"),
-    t("錄","ㄌㄨˋ"),
-    t("答","ㄉㄚˊ"),
-    t("對","ㄉㄨㄟˋ"),
-    t("答","ㄉㄚˊ"),
-    t("錯","ㄘㄨㄛˋ"),
-    "，",
-    t("看","ㄎㄢˋ"),
-    t("結","ㄐㄧㄝˊ"),
-    t("算","ㄙㄨㄢˋ"),
-    t("分","ㄈㄣ"),
-    t("數","ㄕㄨˋ"),
-    "。"
-  ],
-  menuButton: [
-    t("回","ㄏㄨㄟˊ"),
-    t("到","ㄉㄠˋ"),
-    t("遊","ㄧㄡˊ"),
-    t("戲","ㄒㄧˋ"),
-    t("選","ㄒㄩㄢˇ"),
-    t("單","ㄉㄢ")
-  ]
-};
+const menuLabel = [
+  t("回","ㄏㄨㄟˊ"),
+  t("到","ㄉㄠˋ"),
+  t("功","ㄍㄨㄥ"),
+  t("能","ㄋㄥˊ"),
+  t("選","ㄒㄩㄢˇ"),
+  t("單","ㄉㄢ")
+];
 
 function t(text, zhuyin) {
   return { text, zhuyin };
@@ -430,48 +363,6 @@ function showGameInfoDialog() {
   dialog.scrollTop = 0;
 }
 
-function renderHome() {
-  const app = document.getElementById("app");
-  const renderOptions = { interactive: false, showZhuyin: true };
-
-  app.innerHTML = `
-    <section class="home-screen" aria-label="功能選單">
-      <p class="home-subtitle">${renderTokens(homeLabels.subtitle, renderOptions)}</p>
-      <div class="game-menu">
-        <a class="game-entry" href="#${escapeHtml(STORY.startRoom)}" id="enter-story">
-          <span class="game-entry-icon" aria-hidden="true">📖</span>
-          <span class="game-entry-copy">
-            <strong>${renderTokens(homeLabels.storyTitle, renderOptions)}</strong>
-            <span class="small">${renderTokens(homeLabels.storyDescription, renderOptions)}</span>
-          </span>
-        </a>
-        <a class="game-entry" href="ZhuYingFlashCard/index.html">
-          <span class="game-entry-icon" aria-hidden="true">ㄅ</span>
-          <span class="game-entry-copy">
-            <strong>${renderTokens(homeLabels.flashcardTitle, renderOptions)}</strong>
-            <span class="small">${renderTokens(homeLabels.flashcardDescription, renderOptions)}</span>
-          </span>
-        </a>
-      </div>
-    </section>
-  `;
-
-  scrollToTop();
-
-  document.getElementById("enter-story").addEventListener("click", event => {
-    event.preventDefault();
-    const roomId = enterStory();
-    history.replaceState(null, "", `#${roomId}`);
-  });
-}
-
-function enterStory(roomId) {
-  const targetRoom = roomId || initialRoom();
-  renderRoom(targetRoom);
-  if (shouldShowGameInfo()) showGameInfoDialog();
-  return targetRoom;
-}
-
 function renderRoom(roomId) {
   const app = document.getElementById("app");
   const room = STORY.rooms[roomId] || STORY.rooms[STORY.startRoom];
@@ -534,7 +425,7 @@ function renderRoom(roomId) {
     ${doors ? `<h2>${renderTokens(label("doors"))}</h2>${doors}` : ""}
     ${back}
     <div class="toolbar">
-      <button class="tool-button" id="game-menu">${renderTokens(homeLabels.menuButton, { interactive: false })}</button>
+      <a class="tool-button menu-link" href="../index.html">${renderTokens(menuLabel, { interactive: false })}</a>
       <button class="tool-button" id="restart">${renderTokens(label("restart"), { interactive: false })}</button>
       <button class="tool-button" id="export-learned">${renderTokens(label("exportLearnedCharacters"), { interactive: false })}</button>
     </div>
@@ -549,11 +440,6 @@ function renderRoom(roomId) {
       renderRoom(link.dataset.room);
       history.replaceState(null, "", `#${link.dataset.room}`);
     });
-  });
-
-  document.getElementById("game-menu").addEventListener("click", () => {
-    renderHome();
-    history.replaceState(null, "", location.pathname + location.search);
   });
 
   document.getElementById("restart").addEventListener("click", () => {
@@ -576,21 +462,10 @@ function initialRoom() {
   return STORY.startRoom;
 }
 
-function currentHashId() {
-  return decodeURIComponent(location.hash.replace("#", ""));
-}
-
-function renderCurrentRoute() {
-  const id = currentHashId();
-  if (id && STORY.rooms[id]) {
-    enterStory(id);
-    return;
-  }
-  renderHome();
-}
-
 window.addEventListener("hashchange", () => {
-  renderCurrentRoute();
+  const id = decodeURIComponent(location.hash.replace("#", ""));
+  if (id && STORY.rooms[id]) renderRoom(id);
 });
 
-renderCurrentRoute();
+renderRoom(initialRoom());
+if (shouldShowGameInfo()) showGameInfoDialog();
