@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>注音練習結算</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="summary-page">
+    <main class="summary-shell">
+      <header class="summary-hero">
+        <div>
+          <p class="eyebrow">Practice Summary</p>
+          <h1>本次練習結算</h1>
+        </div>
+        <div class="top-actions">
+          <a class="settle-button" href="../index.html">功能選單</a>
+          <button class="settle-button primary" id="restartButton" type="button">回到練習</button>
+        </div>
+      </header>
+
+      <section class="score-panel" aria-label="本次練習分數">
+        <div class="score-copy">
+          <span class="score-kicker">總結分數</span>
+          <p>以 37 個注音是否都達到 90% 答對率計算。</p>
+          <div class="score-metrics">
+            <span><strong id="scorePracticed">0/37</strong> 已練</span>
+            <span><strong id="scoreMastered">0/37</strong> 達標</span>
+          </div>
+        </div>
+        <div class="score-display" id="scoreDisplay" aria-live="polite">
+          <span class="score-number" id="scoreValue">000</span>
+          <span class="score-unit">分</span>
+        </div>
+      </section>
+
+      <section class="summary-grid session-summary" aria-label="本次練習總覽">
+        <div class="summary-item">
+          <span class="summary-value" id="summaryTotal">0</span>
+          <span class="summary-label">總次數</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-value" id="summaryCorrect">0</span>
+          <span class="summary-label">答對</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-value" id="summaryWrong">0</span>
+          <span class="summary-label">答錯</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-value" id="summaryAccuracy">—</span>
+          <span class="summary-label">答對率</span>
+        </div>
+      </section>
+
+      <section class="heatmap-panel" aria-label="每個注音統計">
+        <div class="panel-heading">
+          <h2>注音答題 Heatmap</h2>
+          <span>目標 90% 以上</span>
+        </div>
+        <div class="heatmap-legend" aria-hidden="true">
+          <span>未達標</span>
+          <span class="legend-bar"></span>
+          <span>90%+</span>
+        </div>
+        <div id="heatmapGrid" class="heatmap-grid"></div>
+      </section>
+    </main>
+
+    <script src="summary.js"></script>
+  </body>
+</html>

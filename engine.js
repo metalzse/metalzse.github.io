@@ -59,6 +59,37 @@ const homeLabels = {
     t("務","ㄨˋ"),
     "。"
   ],
+  flashcardTitle: [
+    t("注","ㄓㄨˋ"),
+    t("音","ㄧㄣ"),
+    t("練","ㄌㄧㄢˋ"),
+    t("習","ㄒㄧˊ"),
+    t("卡","ㄎㄚˇ")
+  ],
+  flashcardDescription: [
+    t("隨","ㄙㄨㄟˊ"),
+    t("機","ㄐㄧ"),
+    t("練","ㄌㄧㄢˋ"),
+    t("習","ㄒㄧˊ"),
+    "37",
+    t("個","ㄍㄜˋ"),
+    t("注","ㄓㄨˋ"),
+    t("音","ㄧㄣ"),
+    "，",
+    t("記","ㄐㄧˋ"),
+    t("錄","ㄌㄨˋ"),
+    t("答","ㄉㄚˊ"),
+    t("對","ㄉㄨㄟˋ"),
+    t("答","ㄉㄚˊ"),
+    t("錯","ㄘㄨㄛˋ"),
+    "，",
+    t("看","ㄎㄢˋ"),
+    t("結","ㄐㄧㄝˊ"),
+    t("算","ㄙㄨㄢˋ"),
+    t("分","ㄈㄣ"),
+    t("數","ㄕㄨˋ"),
+    "。"
+  ],
   menuButton: [
     t("回","ㄏㄨㄟˊ"),
     t("到","ㄉㄠˋ"),
@@ -412,6 +443,13 @@ function renderHome() {
           <span class="game-entry-copy">
             <strong>${renderTokens(homeLabels.storyTitle, renderOptions)}</strong>
             <span class="small">${renderTokens(homeLabels.storyDescription, renderOptions)}</span>
+          </span>
+        </a>
+        <a class="game-entry" href="ZhuYingFlashCard/index.html">
+          <span class="game-entry-icon" aria-hidden="true">ㄅ</span>
+          <span class="game-entry-copy">
+            <strong>${renderTokens(homeLabels.flashcardTitle, renderOptions)}</strong>
+            <span class="small">${renderTokens(homeLabels.flashcardDescription, renderOptions)}</span>
           </span>
         </a>
       </div>

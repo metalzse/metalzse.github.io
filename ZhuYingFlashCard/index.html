@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>注音練習卡</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="practice-panel" aria-label="注音練習">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Zhuyin Flash</p>
+            <h1>注音練習卡</h1>
+          </div>
+          <div class="top-actions">
+            <a class="settle-button" href="../index.html">功能選單</a>
+            <button class="settle-button" id="infoButton" type="button">說明</button>
+            <a class="settle-button" href="summary.html">結算</a>
+            <button class="icon-button" id="resetButton" type="button" aria-label="重設統計" title="重設統計">
+              <span aria-hidden="true">↺</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="summary-grid" aria-label="練習統計">
+          <div class="summary-item">
+            <span class="summary-value" id="totalAttempts">0</span>
+            <span class="summary-label">總次數</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value" id="correctTotal">0</span>
+            <span class="summary-label">答對</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value" id="wrongTotal">0</span>
+            <span class="summary-label">答錯</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-value" id="validTimeCount">0</span>
+            <span class="summary-label">速度樣本</span>
+          </div>
+        </div>
+
+        <section class="card-area" aria-live="polite">
+          <div class="card-meta">
+            <span id="symbolGroup">注音</span>
+            <span id="symbolWeight">權重 1.00x</span>
+          </div>
+          <div class="symbol-card">
+            <span id="currentSymbol" class="current-symbol">ㄅ</span>
+          </div>
+          <div class="answer-buttons">
+            <button class="answer-button wrong" id="wrongButton" type="button">
+              <span aria-hidden="true">×</span>
+              錯
+            </button>
+            <button class="answer-button correct" id="correctButton" type="button">
+              <span aria-hidden="true">✓</span>
+              對
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="insight-panel" aria-label="注音熟悉度">
+        <div class="panel-heading">
+          <h2>加權排序</h2>
+          <span id="idleNote">超時剔除 20s</span>
+        </div>
+        <div id="symbolList" class="symbol-list"></div>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
