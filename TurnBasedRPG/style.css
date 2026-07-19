@@ -166,6 +166,14 @@ button { color: inherit; }
 .enemy-ember .rune { color: #ffd260; text-shadow: 0 0 15px #ff6a2a; }
 .enemy-ember .eye { background: #fff0a3; box-shadow: 0 0 12px 3px #ff3d20; }
 .enemy-unit-ember .enemy-nameplate { border-color: rgba(255, 116, 66, .42); background: rgba(45, 18, 15, .9); }
+.obsession-trait { border-color: rgba(86, 221, 230, .55); color: #9af4f3; }
+.enemy-obsession .monster-head { border-color: #17383f; background: #317381; box-shadow: inset 13px -9px #20515d; }
+.enemy-obsession .monster-body { border-color: #14343c; background: #296775; box-shadow: inset -18px -13px #194854; }
+.enemy-obsession .monster-arm { border-color: #14343c; background: #245c68; }
+.enemy-obsession .monster-horn { background: #6ab4b8; }
+.enemy-obsession .rune { top: 31px; left: 35px; color: #b8ffff; font-size: 34px; text-shadow: 0 0 16px #38dce5; }
+.enemy-obsession .eye { background: #d5ffff; box-shadow: 0 0 13px 3px #28d5e0; }
+.enemy-unit-obsession .enemy-nameplate { border-color: rgba(75, 211, 220, .46); background: rgba(14, 39, 45, .93); }
 .boss-trait { border-color: rgba(196, 139, 255, .55); color: #dab8ff; }
 .enemy-boss .monster-head { border-color: #2b193e; background: #65428a; box-shadow: inset 13px -9px #41265f; }
 .enemy-boss .monster-body { border-color: #28183a; background: #583679; box-shadow: inset -18px -13px #351e50; }

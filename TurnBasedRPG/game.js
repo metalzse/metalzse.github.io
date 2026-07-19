@@ -12,7 +12,8 @@ const FALLBACK_ZHUYIN = {
 };
 const ENEMY_TYPES = [
   { type: "moss", baseName: "苔岩巨像", timedDefense: false },
-  { type: "ember", baseName: "赤焰魔像", timedDefense: true }
+  { type: "ember", baseName: "赤焰魔像", timedDefense: true },
+  { type: "obsession", baseName: "執念魔像", timedDefense: false, highestWeightDefense: true }
 ];
 const BOSS_TYPE = { type: "boss", baseName: "符文魔王", timedDefense: false };
 const BOSS_SPAWN_CHANCE = 0.20;
@@ -179,6 +180,12 @@ function weightedCharacterPick(candidates) {
   return pool[pool.length - 1];
 }
 
+function highestWeightedCharacterPick(candidates) {
+  const weightedCandidates = candidates.map(entry => ({ ...entry, weight: characterWeight(entry.character) }));
+  const highestWeight = Math.max(...weightedCandidates.map(entry => entry.weight));
+  return randomItem(weightedCandidates.filter(entry => entry.weight === highestWeight));
+}
+
 function recordQuizResult(character, correct) {
   const stats = characterStats(character);
   stats.seen += 1;
@@ -271,6 +278,7 @@ function shuffle(items) {
 function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const enemy = state.enemies[enemyIndex];
   const bossQuiz = enemy.type === "boss";
+  const highestWeightQuiz = Boolean(enemy.highestWeightDefense);
   const learnedCharacters = getLearnedCharacters();
   const usingFallback = !bossQuiz && learnedCharacters.length === 0;
   const candidates = bossQuiz
@@ -278,7 +286,9 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     : usingFallback
       ? Object.entries(FALLBACK_ZHUYIN).map(([character, zhuyin]) => ({ character, zhuyin }))
       : learnedCharacters;
-  const selectedEntry = weightedCharacterPick(candidates);
+  const selectedEntry = highestWeightQuiz
+    ? highestWeightedCharacterPick(candidates)
+    : weightedCharacterPick(candidates);
   const character = selectedEntry.character;
   const correctAnswer = selectedEntry.zhuyin;
   lastQuizCharacter = character;
@@ -296,6 +306,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     totalStrikes,
     timedDefense: state.enemies[enemyIndex].timedDefense,
     bossQuiz,
+    highestWeightQuiz,
     bossWordCount: bossQuiz ? enemy.wordList.length : 0,
     usingFallback,
     resolved: false
@@ -326,7 +337,7 @@ function setMessage(title, detail, icon) {
 }
 
 function monsterMarkup(enemy) {
-  const rune = enemy.type === "boss" ? "王" : "◇";
+  const rune = enemy.type === "boss" ? "王" : enemy.type === "obsession" ? "重" : "◇";
   return `<div class="monster-stage sprite enemy-${enemy.type}" aria-label="${enemy.name}">
     <div class="monster">
       <div class="monster-horn horn-left"></div><div class="monster-horn horn-right"></div>
@@ -343,6 +354,7 @@ function renderEnemies() {
       <div class="enemy-nameplate">
         <strong>${enemy.name}</strong>
         ${enemy.timedDefense ? '<span class="enemy-trait">10 秒限時</span>' : ""}
+        ${enemy.highestWeightDefense ? '<span class="enemy-trait obsession-trait">鎖定最高權重</span>' : ""}
         ${enemy.type === "boss" ? `<span class="enemy-trait boss-trait">占 2 人・魔王字庫 ${enemy.wordList.length} 字</span>` : ""}
         <div class="meter"><div class="meter-fill enemy-hp"></div></div>
         <span class="enemy-hp-text"></span>
@@ -459,7 +471,9 @@ function showDefenseChallenge() {
   const quiz = state.quiz;
   const source = quiz.bossQuiz
     ? `魔王獨立字庫 ${quiz.bossWordCount} 字`
-    : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
+    : quiz.highestWeightQuiz
+      ? "目前最高權重字"
+      : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
   elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}・權重 ${quiz.weight.toFixed(2)}×`;
   elements.challengeWord.textContent = quiz.character;
