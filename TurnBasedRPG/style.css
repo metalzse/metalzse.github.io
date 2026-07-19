@@ -166,6 +166,40 @@ button { color: inherit; }
 .enemy-ember .rune { color: #ffd260; text-shadow: 0 0 15px #ff6a2a; }
 .enemy-ember .eye { background: #fff0a3; box-shadow: 0 0 12px 3px #ff3d20; }
 .enemy-unit-ember .enemy-nameplate { border-color: rgba(255, 116, 66, .42); background: rgba(45, 18, 15, .9); }
+.boss-trait { border-color: rgba(196, 139, 255, .55); color: #dab8ff; }
+.enemy-boss .monster-head { border-color: #2b193e; background: #65428a; box-shadow: inset 13px -9px #41265f; }
+.enemy-boss .monster-body { border-color: #28183a; background: #583679; box-shadow: inset -18px -13px #351e50; }
+.enemy-boss .monster-arm { border-color: #28183a; background: #4c3067; }
+.enemy-boss .monster-horn { background: #d7ac4c; }
+.enemy-boss .rune { top: 32px; left: 39px; color: #f0cfff; font-size: 34px; text-shadow: 0 0 16px #b44cff; }
+.enemy-boss .eye { background: #e6b3ff; box-shadow: 0 0 13px 3px #a538ff; }
+.enemy-unit-boss .enemy-nameplate { border-color: rgba(191, 123, 255, .48); background: rgba(31, 17, 48, .93); }
+
+.monster-stage.boss-attack::before {
+  top: 3%;
+  left: 55%;
+  width: 105px;
+  height: 105px;
+  background: radial-gradient(circle, rgba(239, 191, 255, .95) 0 9%, rgba(174, 67, 255, .72) 22%, rgba(87, 31, 150, .26) 48%, transparent 72%);
+  animation: boss-magic-charge .6s ease-out;
+}
+.monster-stage.boss-attack::after {
+  top: 16%;
+  left: 68%;
+  width: 78px;
+  height: 78px;
+  border: 3px solid rgba(230, 190, 255, .9);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.9), rgba(183, 82, 255, .55) 24%, rgba(88, 25, 155, .18) 54%, transparent 70%);
+  box-shadow: 0 0 18px 7px rgba(171, 63, 255, .55);
+  mix-blend-mode: screen;
+  animation: boss-magic-blast .6s ease-out;
+}
+.monster-stage.boss-attack .right-eye,
+.monster-stage.boss-attack .left-eye { animation: boss-eye-flash .6s ease; }
+.monster-stage.boss-attack .rune { animation: boss-rune-flash .6s ease; }
+.monster-stage.boss-attack .arm-left { animation: boss-arm-cast-left .6s ease; }
+.monster-stage.boss-attack .arm-right { animation: boss-arm-cast-right .6s ease; }
 
 .hero { width: 150px; height: 165px; transform-origin: bottom center; }
 .hero-head { position: absolute; z-index: 5; top: 12px; left: 57px; width: 51px; height: 52px; border: 4px solid #2a2421; border-radius: 48%; background: #e1ac7a; box-shadow: inset 0 11px #4b3329; }
@@ -176,7 +210,7 @@ button { color: inherit; }
 .shield { position: absolute; z-index: 7; right: 5px; bottom: 18px; display: grid; place-items: center; width: 54px; height: 68px; border: 5px solid #c09b50; border-radius: 45% 45% 55% 55%; color: #d8b565; background: #334b55; font-size: 24px; }
 
 .versus-mark { align-self: center; padding: 0 16px; color: rgba(225,184,91,.45); font: italic 900 clamp(26px, 4vw, 48px)/1 Georgia, serif; }
-.sprite.hit { animation: hit .45s ease; }.sprite.attack-motion { animation: lunge .55s ease; }.sprite.double-strike-one { animation: double-lunge-one .55s ease; }.sprite.double-strike-two { animation: double-lunge-two .6s ease; }.sprite.guard-motion { animation: guard .6s ease; }
+.sprite.hit { animation: hit .45s ease; }.sprite.attack-motion { animation: lunge .55s ease; }.sprite.double-strike-one { animation: double-lunge-one .55s ease; }.sprite.double-strike-two { animation: double-lunge-two .6s ease; }.sprite.boss-attack { animation: boss-cast .6s ease; }.sprite.guard-motion { animation: guard .6s ease; }
 @keyframes hit { 20%, 60% { transform: translateX(-9px); filter: brightness(2) drop-shadow(0 0 14px #ef624e); } 40%, 80% { transform: translateX(9px); } }
 @keyframes lunge { 45% { transform: translateX(45px) scale(1.07); } }
 @keyframes guard { 45% { filter: drop-shadow(0 0 18px #70c8ff); transform: scale(1.08); } }
@@ -226,6 +260,13 @@ button { color: inherit; }
   36% { transform: rotate(-68deg) translateY(-8px); }
   72% { transform: rotate(24deg) translate(9px, 5px); }
 }
+@keyframes boss-cast { 45% { transform: translateY(-8px) scale(1.08); filter: drop-shadow(0 0 17px rgba(183, 82, 255, .8)); } }
+@keyframes boss-magic-charge { 0% { opacity: 0; transform: scale(.15); } 45% { opacity: 1; transform: scale(.72); } 100% { opacity: 0; transform: scale(1.35); } }
+@keyframes boss-magic-blast { 0%, 28% { opacity: 0; transform: scale(.18); } 58% { opacity: 1; transform: translateX(18px) scale(.8); } 100% { opacity: 0; transform: translateX(85px) scale(1.8); } }
+@keyframes boss-eye-flash { 20%, 80% { background: #fff; box-shadow: 0 0 20px 6px #c15cff; } }
+@keyframes boss-rune-flash { 20%, 80% { color: #fff; text-shadow: 0 0 24px #bf52ff, 0 0 10px #fff; } }
+@keyframes boss-arm-cast-left { 45% { transform: rotate(-36deg) translate(-5px, -9px); } }
+@keyframes boss-arm-cast-right { 45% { transform: rotate(36deg) translate(5px, -9px); } }
 
 .defense-challenge {
   position: absolute;

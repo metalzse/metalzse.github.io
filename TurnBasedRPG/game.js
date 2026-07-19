@@ -2,6 +2,7 @@
 
 const LEARNED_CHARACTERS_KEY = "adventure-learned-characters";
 const LEARNED_CHARACTERS_VERSION_KEY = "adventure-learned-characters-version";
+const RPG_WEIGHT_STATE_KEY = "turn-based-rpg-zhuyin-weights-v1";
 const STORY_FILES = ["story.js", "story_airport.js", "story_dino.js", "story_wizard.js"];
 const FALLBACK_ZHUYIN = {
   "人": "ㄖㄣˊ", "大": "ㄉㄚˋ", "小": "ㄒㄧㄠˇ", "山": "ㄕㄢ", "水": "ㄕㄨㄟˇ",
@@ -13,11 +14,38 @@ const ENEMY_TYPES = [
   { type: "moss", baseName: "苔岩巨像", timedDefense: false },
   { type: "ember", baseName: "赤焰魔像", timedDefense: true }
 ];
+const BOSS_TYPE = { type: "boss", baseName: "符文魔王", timedDefense: false };
+const BOSS_SPAWN_CHANCE = 0.20;
+const BOSS_MAX_HP = 200;
+const MIN_ENEMY_UNITS = 2;
+const MAX_ENEMY_UNITS = 5;
 const TIMED_DEFENSE_SECONDS = 10;
+const UNANSWERED_CHARACTER_WEIGHT = 1.75;
+const WRONG_WEIGHT_BASE = 2.15;
+const CORRECT_WEIGHT_BASE = 0.72;
+const MIN_CHARACTER_WEIGHT = 0.16;
+const MAX_CHARACTER_WEIGHT = 30;
 
-function createEnemies() {
-  const count = Math.floor(Math.random() * 3) + 1;
-  const maxHp = 120;
+function learnedCharacterNames() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LEARNED_CHARACTERS_KEY) || "[]");
+    if (!Array.isArray(saved)) return new Set();
+    return new Set(saved.map(item => typeof item === "string" ? item : item?.character).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+function availableBossWords(excludedCharacters = []) {
+  const learned = learnedCharacterNames();
+  const excluded = new Set(excludedCharacters);
+  return Object.entries(window.ZHUYIN_CHARACTER_MAP || {})
+    .filter(([character, zhuyin]) => zhuyin && !learned.has(character) && !excluded.has(character))
+    .map(([character, zhuyin]) => ({ character, zhuyin }));
+}
+
+function createRegularEnemies(count) {
+  const maxHp = 80;
   return Array.from({ length: count }, (_, index) => {
     const enemyType = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
     return {
@@ -27,6 +55,30 @@ function createEnemies() {
       maxHp
     };
   });
+}
+
+function createEnemies() {
+  const enemyUnits = Math.floor(Math.random() * (MAX_ENEMY_UNITS - MIN_ENEMY_UNITS + 1)) + MIN_ENEMY_UNITS;
+  const bossCandidates = availableBossWords();
+  const includeBoss = bossCandidates.length > 0 && Math.random() < BOSS_SPAWN_CHANCE;
+  const regularEnemies = createRegularEnemies(enemyUnits - (includeBoss ? 2 : 0));
+
+  if (includeBoss) {
+    const firstWord = bossCandidates[Math.floor(Math.random() * bossCandidates.length)];
+    return [{
+      ...BOSS_TYPE,
+      name: BOSS_TYPE.baseName,
+      hp: BOSS_MAX_HP,
+      maxHp: BOSS_MAX_HP,
+      wordList: [firstWord]
+    }, ...regularEnemies];
+  }
+
+  return regularEnemies;
+}
+
+function enemyUnitCount(enemies = state.enemies) {
+  return enemies.reduce((total, enemy) => total + (enemy.type === "boss" ? 2 : 1), 0);
 }
 
 const createState = () => ({
@@ -43,6 +95,8 @@ let state = createState();
 let pendingTimer;
 let defenseTimerInterval;
 let defenseTimerDeadline = 0;
+let weightState = loadWeightState();
+let lastQuizCharacter = "";
 let zhuyinMap = { ...FALLBACK_ZHUYIN, ...(window.ZHUYIN_CHARACTER_MAP || {}) };
 
 const $ = (selector) => document.querySelector(selector);
@@ -74,6 +128,65 @@ const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
 const wait = (milliseconds) => new Promise((resolve) => {
   pendingTimer = window.setTimeout(resolve, milliseconds);
 });
+
+function loadWeightState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RPG_WEIGHT_STATE_KEY) || "{}");
+    return saved && typeof saved === "object" ? saved : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveWeightState() {
+  localStorage.setItem(RPG_WEIGHT_STATE_KEY, JSON.stringify(weightState));
+}
+
+function characterStats(character) {
+  const saved = weightState[character] || {};
+  return {
+    correct: Number(saved.correct) || 0,
+    wrong: Number(saved.wrong) || 0,
+    seen: Number(saved.seen) || 0
+  };
+}
+
+function characterWeight(character) {
+  const stats = characterStats(character);
+  if (stats.seen === 0) return UNANSWERED_CHARACTER_WEIGHT;
+
+  const mistakeDebt = Math.max(0, stats.wrong - stats.correct);
+  const masteryCredit = Math.max(0, stats.correct - stats.wrong);
+  const weight = mistakeDebt > 0
+    ? WRONG_WEIGHT_BASE ** mistakeDebt
+    : CORRECT_WEIGHT_BASE ** Math.max(1, masteryCredit);
+
+  return Math.min(Math.max(weight, MIN_CHARACTER_WEIGHT), MAX_CHARACTER_WEIGHT);
+}
+
+function weightedCharacterPick(candidates) {
+  const weightedCandidates = candidates.map(entry => ({ ...entry, weight: characterWeight(entry.character) }));
+  const pool = lastQuizCharacter && weightedCandidates.length > 1
+    ? weightedCandidates.filter(entry => entry.character !== lastQuizCharacter)
+    : weightedCandidates;
+  const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
+  let threshold = Math.random() * totalWeight;
+
+  for (const entry of pool) {
+    threshold -= entry.weight;
+    if (threshold <= 0) return entry;
+  }
+  return pool[pool.length - 1];
+}
+
+function recordQuizResult(character, correct) {
+  const stats = characterStats(character);
+  stats.seen += 1;
+  if (correct) stats.correct += 1;
+  else stats.wrong += 1;
+  weightState[character] = stats;
+  saveWeightState();
+}
 
 async function loadZhuyinData() {
   const sharedMap = window.ZHUYIN_CHARACTER_MAP || {};
@@ -156,26 +269,34 @@ function shuffle(items) {
 }
 
 function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
+  const enemy = state.enemies[enemyIndex];
+  const bossQuiz = enemy.type === "boss";
   const learnedCharacters = getLearnedCharacters();
-  const usingFallback = learnedCharacters.length === 0;
-  const candidates = usingFallback
-    ? Object.entries(FALLBACK_ZHUYIN).map(([character, zhuyin]) => ({ character, zhuyin }))
-    : learnedCharacters;
-  const selectedEntry = randomItem(candidates);
+  const usingFallback = !bossQuiz && learnedCharacters.length === 0;
+  const candidates = bossQuiz
+    ? enemy.wordList
+    : usingFallback
+      ? Object.entries(FALLBACK_ZHUYIN).map(([character, zhuyin]) => ({ character, zhuyin }))
+      : learnedCharacters;
+  const selectedEntry = weightedCharacterPick(candidates);
   const character = selectedEntry.character;
   const correctAnswer = selectedEntry.zhuyin;
+  lastQuizCharacter = character;
   const wrongAnswerPool = [...new Set(Object.values(zhuyinMap))].filter((answer) => answer !== correctAnswer);
   const wrongAnswers = shuffle(wrongAnswerPool).slice(0, 2);
 
   return {
     character,
     correctAnswer,
+    weight: selectedEntry.weight,
     answers: shuffle([correctAnswer, ...wrongAnswers]),
     damage,
     enemyIndex,
     strike,
     totalStrikes,
     timedDefense: state.enemies[enemyIndex].timedDefense,
+    bossQuiz,
+    bossWordCount: bossQuiz ? enemy.wordList.length : 0,
     usingFallback,
     resolved: false
   };
@@ -195,16 +316,22 @@ function addLog(text) {
   while (elements.log.children.length > 5) elements.log.lastElementChild.remove();
 }
 
+function battleStartMessage() {
+  if (state.enemies.length === 1) return `${state.enemies[0].name}擋住去路（敵人額度 ${enemyUnitCount()}），戰鬥開始！`;
+  return `${state.enemies.length} 名敵人擋住去路（敵人額度 ${enemyUnitCount()}），戰鬥開始！`;
+}
+
 function setMessage(title, detail, icon) {
   elements.message.innerHTML = `<span class="message-icon" aria-hidden="true">${icon}</span><p><strong>${title}</strong><span>${detail}</span></p>`;
 }
 
 function monsterMarkup(enemy) {
+  const rune = enemy.type === "boss" ? "王" : "◇";
   return `<div class="monster-stage sprite enemy-${enemy.type}" aria-label="${enemy.name}">
     <div class="monster">
       <div class="monster-horn horn-left"></div><div class="monster-horn horn-right"></div>
       <div class="monster-head"><span class="eye left-eye"></span><span class="eye right-eye"></span></div>
-      <div class="monster-body"><span class="rune">◇</span></div>
+      <div class="monster-body"><span class="rune">${rune}</span></div>
       <div class="monster-arm arm-left"></div><div class="monster-arm arm-right"></div>
     </div>
   </div>`;
@@ -216,6 +343,7 @@ function renderEnemies() {
       <div class="enemy-nameplate">
         <strong>${enemy.name}</strong>
         ${enemy.timedDefense ? '<span class="enemy-trait">10 秒限時</span>' : ""}
+        ${enemy.type === "boss" ? `<span class="enemy-trait boss-trait">占 2 人・魔王字庫 ${enemy.wordList.length} 字</span>` : ""}
         <div class="meter"><div class="meter-fill enemy-hp"></div></div>
         <span class="enemy-hp-text"></span>
       </div>
@@ -242,6 +370,8 @@ function updateUI() {
     unit.classList.toggle("defeated", enemy.hp === 0);
     unit.querySelector(".enemy-hp").style.width = `${enemy.hp / enemy.maxHp * 100}%`;
     unit.querySelector(".enemy-hp-text").textContent = enemy.hp > 0 ? `${enemy.hp} / ${enemy.maxHp}` : "已擊倒";
+    const bossTrait = unit.querySelector(".boss-trait");
+    if (bossTrait) bossTrait.textContent = `占 2 人・魔王字庫 ${enemy.wordList.length} 字`;
   });
   const playerCanAct = state.phase === "player" && !state.finished;
   elements.attackButton.disabled = !playerCanAct;
@@ -256,7 +386,7 @@ async function playerAttack() {
   animate(elements.heroSprite, "attack-motion");
   await wait(220);
 
-  const targetIndex = livingEnemyIndexes()[0];
+  const targetIndex = randomItem(livingEnemyIndexes());
   const target = state.enemies[targetIndex];
   const damage = randomDamage();
   target.hp = Math.max(0, target.hp - damage);
@@ -278,7 +408,7 @@ async function playerAttack() {
 function startEnemyTurn() {
   state.enemyQueue = livingEnemyIndexes().flatMap((enemyIndex) => {
     const enemy = state.enemies[enemyIndex];
-    const doubleStrike = !enemy.timedDefense && Math.random() < 0.20;
+    const doubleStrike = enemy.type === "moss" && Math.random() < 0.20;
     if (!doubleStrike) return [{ enemyIndex, strike: 1, totalStrikes: 1 }];
 
     addLog(`${state.enemies[enemyIndex].name} 使出雙擊！`);
@@ -305,9 +435,11 @@ async function startEnemyAttack() {
     totalStrikes === 2 ? `第 ${strike} 次攻擊` : "注意敵人的動作",
     "◆"
   );
-  const attackAnimation = totalStrikes === 2
-    ? (strike === 1 ? "double-strike-one" : "double-strike-two")
-    : "attack-motion";
+  const attackAnimation = enemy.type === "boss"
+    ? "boss-attack"
+    : totalStrikes === 2
+      ? (strike === 1 ? "double-strike-one" : "double-strike-two")
+      : "attack-motion";
   animate(enemyStage(enemyIndex), attackAnimation);
 
   // 先讓攻擊動畫完整播放，再顯示注音盾牌題目。
@@ -325,9 +457,11 @@ async function startEnemyAttack() {
 
 function showDefenseChallenge() {
   const quiz = state.quiz;
-  const source = quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
+  const source = quiz.bossQuiz
+    ? `魔王獨立字庫 ${quiz.bossWordCount} 字`
+    : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
-  elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}`;
+  elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}・權重 ${quiz.weight.toFixed(2)}×`;
   elements.challengeWord.textContent = quiz.character;
   elements.challengeFeedback.textContent = `選對就能擋下 ${quiz.damage} 點傷害`;
   elements.challengeFeedback.className = "challenge-feedback";
@@ -388,6 +522,7 @@ function handleDefenseTimeout() {
   quiz.resolved = true;
   state.phase = "correction";
   clearDefenseTimer();
+  recordQuizResult(quiz.character, false);
   revealCorrectAnswer();
   elements.challengeCard.classList.add("timed-out");
   elements.challengeFeedback.textContent = `時間到！「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
@@ -397,12 +532,29 @@ function handleDefenseTimeout() {
   addLog(`時間到，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
 }
 
+function expandBossWordList(enemyIndex) {
+  const enemy = state.enemies[enemyIndex];
+  if (enemy?.type !== "boss") return null;
+  const candidates = availableBossWords(enemy.wordList.map(entry => entry.character));
+  if (!candidates.length) {
+    addLog("符文魔王已經收集完所有尚未學會的故事字。");
+    return null;
+  }
+
+  const newWord = randomItem(candidates);
+  enemy.wordList.push(newWord);
+  addLog(`成功防守，符文魔王的獨立字庫增加到 ${enemy.wordList.length} 字。`);
+  updateUI();
+  return newWord;
+}
+
 async function resolveDefense(selectedAnswer) {
   const quiz = state.quiz;
   if (state.phase !== "defense" || !quiz || quiz.resolved) return;
   quiz.resolved = true;
   clearDefenseTimer();
   const blocked = selectedAnswer === quiz.correctAnswer;
+  recordQuizResult(quiz.character, blocked);
   const buttons = [...elements.shieldOptions.querySelectorAll("button")];
 
   buttons.forEach((button) => {
@@ -412,7 +564,10 @@ async function resolveDefense(selectedAnswer) {
   });
 
   if (blocked) {
-    elements.challengeFeedback.textContent = "正確！盾牌擋下了攻擊！";
+    const bossWordAdded = quiz.bossQuiz ? expandBossWordList(quiz.enemyIndex) : null;
+    elements.challengeFeedback.textContent = bossWordAdded
+      ? `正確！成功防守，魔王字庫增加到 ${state.enemies[quiz.enemyIndex].wordList.length} 字！`
+      : "正確！盾牌擋下了攻擊！";
     elements.challengeFeedback.classList.add("success");
     addLog(`答對了！「${quiz.character}」的注音是 ${quiz.correctAnswer}，成功擋下攻擊。`);
     await wait(850);
@@ -507,7 +662,7 @@ function restart() {
   elements.overlay.hidden = true;
   elements.challenge.hidden = true;
   renderEnemies();
-  addLog(`${state.enemies.length} 名苔岩巨像擋住去路，戰鬥開始！`);
+  addLog(battleStartMessage());
   setMessage("輪到你了", "按下攻擊開始戰鬥", "⚔");
   updateUI();
   elements.attackButton.focus();
@@ -525,6 +680,6 @@ $("#restart-button").addEventListener("click", restart);
 $("#restart-small").addEventListener("click", restart);
 
 renderEnemies();
-addLog(`${state.enemies.length} 名苔岩巨像擋住去路，戰鬥開始！`);
+addLog(battleStartMessage());
 updateUI();
 loadZhuyinData();

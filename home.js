@@ -1,6 +1,7 @@
 const sharedLearnedCharactersKey = "adventure-learned-characters";
 const learnedCharactersVersionKey = "adventure-learned-characters-version";
 const learnedCharactersVersion = "2";
+const rpgWeightStateKey = "turn-based-rpg-zhuyin-weights-v1";
 const storyFiles = ["story.js", "story_airport.js", "story_dino.js", "story_wizard.js"];
 const flashcardStateKey = "zhuyin-flashcard-state-v1";
 const adventureRecordPrefixes = [
@@ -183,6 +184,7 @@ function clearCurrentRecords() {
   localStorage.removeItem(sharedLearnedCharactersKey);
   localStorage.removeItem(learnedCharactersVersionKey);
   localStorage.removeItem(flashcardStateKey);
+  localStorage.removeItem(rpgWeightStateKey);
 
   Object.keys(localStorage).forEach(key => {
     if (adventureRecordPrefixes.some(prefix => key.startsWith(prefix))) {
