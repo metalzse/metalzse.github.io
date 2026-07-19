@@ -8,7 +8,8 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="game-shell">
+  <div class="game-debug-layout weight-debug-hidden">
+    <main class="game-shell">
     <header class="topbar">
       <a class="back-link" href="../index.html" aria-label="回到遊戲選單">← 返回選單</a>
       <div class="round-pill" aria-live="polite">第 <span id="round-number">1</span> 回合</div>
@@ -70,11 +71,31 @@
         </button>
       </div>
       <div class="battle-log-wrap">
-        <div class="log-title"><span>戰況紀錄</span><button id="restart-small" type="button">重新開始</button></div>
+        <div class="log-title">
+          <span>戰況紀錄</span>
+          <div class="log-controls">
+            <button class="log-control-button" id="weight-debug-toggle" type="button" aria-pressed="false">顯示權重</button>
+            <button class="log-control-button" id="restart-small" type="button">重新開始</button>
+          </div>
+        </div>
         <ol class="battle-log" id="battle-log" aria-live="polite"></ol>
       </div>
     </section>
-  </main>
+    </main>
+
+    <aside class="weight-debug-panel" aria-labelledby="weight-debug-title" hidden>
+      <header class="weight-debug-header">
+        <div>
+          <p>暫時監看</p>
+          <h2 id="weight-debug-title">已學字權重</h2>
+        </div>
+        <span id="weight-debug-summary">載入中…</span>
+      </header>
+      <p class="weight-debug-note">機率為一般加權模式的基準值，不含上一題排除規則。</p>
+      <div class="weight-debug-columns" aria-hidden="true"><span>字／注音</span><span>權重</span><span>機率</span></div>
+      <ol class="weight-debug-list" id="weight-debug-list"></ol>
+    </aside>
+  </div>
 
   <div class="result-overlay" id="result-overlay" hidden>
     <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title">

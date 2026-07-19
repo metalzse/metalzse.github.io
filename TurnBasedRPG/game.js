@@ -24,11 +24,11 @@ const MIN_ENEMY_UNITS = 2;
 const MAX_ENEMY_UNITS = 5;
 const TIMED_DEFENSE_SECONDS = 10;
 const UNANSWERED_CHARACTER_WEIGHT = 1.75;
-const WRONG_WEIGHT_BASE = 2.15;
-const CORRECT_WEIGHT_BASE = 0.72;
-const MIN_CHARACTER_WEIGHT = 0.16;
-const MAX_CHARACTER_WEIGHT = 30;
+const WEIGHT_EXPONENT_BASE = 3.5;
+const MIN_ANSWER_BALANCE = -4;
+const MAX_ANSWER_BALANCE = 4;
 const TONE_ANSWER_OPTIONS = ["1 聲", "2 聲", "3 聲", "4 聲", "˙"];
+let showWeightDebugInfo = false;
 
 function learnedCharacterNames() {
   try {
@@ -148,7 +148,12 @@ const elements = {
   timerFill: $("#timer-fill"),
   shieldOptions: $("#shield-options"),
   challengeFeedback: $("#challenge-feedback"),
-  correctionConfirm: $("#correction-confirm")
+  correctionConfirm: $("#correction-confirm"),
+  gameDebugLayout: $(".game-debug-layout"),
+  weightDebugPanel: $(".weight-debug-panel"),
+  weightDebugToggle: $("#weight-debug-toggle"),
+  weightDebugSummary: $("#weight-debug-summary"),
+  weightDebugList: $("#weight-debug-list")
 };
 
 const randomDamage = () => Math.floor(Math.random() * 7) + 12;
@@ -161,7 +166,20 @@ const wait = (milliseconds) => new Promise((resolve) => {
 function loadWeightState() {
   try {
     const saved = JSON.parse(localStorage.getItem(RPG_WEIGHT_STATE_KEY) || "{}");
-    return saved && typeof saved === "object" ? saved : {};
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+    const migrated = {};
+
+    Object.entries(saved).forEach(([character, value]) => {
+      let balance;
+      if (Number.isFinite(value)) balance = Number(value);
+      else if (value && typeof value === "object" && Number.isFinite(value.balance)) balance = Number(value.balance);
+      else if (value && typeof value === "object") balance = (Number(value.wrong) || 0) - (Number(value.correct) || 0);
+      else balance = 0;
+      migrated[character] = Math.min(Math.max(Math.round(balance), MIN_ANSWER_BALANCE), MAX_ANSWER_BALANCE);
+    });
+
+    localStorage.setItem(RPG_WEIGHT_STATE_KEY, JSON.stringify(migrated));
+    return migrated;
   } catch {
     return {};
   }
@@ -171,26 +189,14 @@ function saveWeightState() {
   localStorage.setItem(RPG_WEIGHT_STATE_KEY, JSON.stringify(weightState));
 }
 
-function characterStats(character) {
-  const saved = weightState[character] || {};
-  return {
-    correct: Number(saved.correct) || 0,
-    wrong: Number(saved.wrong) || 0,
-    seen: Number(saved.seen) || 0
-  };
+function characterBalance(character) {
+  const savedBalance = Number(weightState[character]);
+  if (!Number.isFinite(savedBalance)) return 0;
+  return Math.min(Math.max(Math.round(savedBalance), MIN_ANSWER_BALANCE), MAX_ANSWER_BALANCE);
 }
 
 function characterWeight(character) {
-  const stats = characterStats(character);
-  if (stats.seen === 0) return UNANSWERED_CHARACTER_WEIGHT;
-
-  const mistakeDebt = Math.max(0, stats.wrong - stats.correct);
-  const masteryCredit = Math.max(0, stats.correct - stats.wrong);
-  const weight = mistakeDebt > 0
-    ? WRONG_WEIGHT_BASE ** mistakeDebt
-    : CORRECT_WEIGHT_BASE ** Math.max(1, masteryCredit);
-
-  return Math.min(Math.max(weight, MIN_CHARACTER_WEIGHT), MAX_CHARACTER_WEIGHT);
+  return UNANSWERED_CHARACTER_WEIGHT * WEIGHT_EXPONENT_BASE ** characterBalance(character);
 }
 
 function weightedCharacterPick(candidates) {
@@ -214,6 +220,37 @@ function highestWeightedCharacterPick(candidates) {
   return randomItem(weightedCandidates.filter(entry => entry.weight === highestWeight));
 }
 
+function characterSelectionProbability(candidates, selectedEntry, highestWeightOnly) {
+  const weightedCandidates = candidates.map(entry => ({ ...entry, weight: characterWeight(entry.character) }));
+
+  if (highestWeightOnly) {
+    const highestWeight = Math.max(...weightedCandidates.map(entry => entry.weight));
+    const highestCandidates = weightedCandidates.filter(entry => entry.weight === highestWeight);
+    return {
+      probability: 1 / highestCandidates.length,
+      candidateCount: weightedCandidates.length,
+      eligibleCandidateCount: highestCandidates.length,
+      excludedLastCharacter: ""
+    };
+  }
+
+  const excludedLastCharacter = lastQuizCharacter && weightedCandidates.length > 1
+    && weightedCandidates.some(entry => entry.character === lastQuizCharacter)
+    ? lastQuizCharacter
+    : "";
+  const pool = lastQuizCharacter && weightedCandidates.length > 1
+    ? weightedCandidates.filter(entry => entry.character !== lastQuizCharacter)
+    : weightedCandidates;
+  const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
+  const selected = pool.find(entry => entry.character === selectedEntry.character);
+  return {
+    probability: selected ? selected.weight / totalWeight : 0,
+    candidateCount: weightedCandidates.length,
+    eligibleCandidateCount: pool.length,
+    excludedLastCharacter
+  };
+}
+
 function toneAnswerFromZhuyin(zhuyin) {
   if (zhuyin.includes("˙")) return "˙";
   if (zhuyin.includes("ˊ")) return "2 聲";
@@ -226,13 +263,101 @@ function zhuyinWithoutTone(zhuyin) {
   return zhuyin.replace(/[ˊˇˋ˙]/g, "");
 }
 
-function recordQuizResult(character, correct) {
-  const stats = characterStats(character);
-  stats.seen += 1;
-  if (correct) stats.correct += 1;
-  else stats.wrong += 1;
-  weightState[character] = stats;
+function baselineProbabilityForCharacter(character, candidateCharacters) {
+  const uniqueCharacters = [...new Set(candidateCharacters)];
+  const totalWeight = uniqueCharacters.reduce((sum, candidate) => sum + characterWeight(candidate), 0);
+  return totalWeight > 0 && uniqueCharacters.includes(character) ? characterWeight(character) / totalWeight : 0;
+}
+
+function recordQuizResult(character, correct, candidateCharacters = []) {
+  const previousWeight = characterWeight(character);
+  const previousProbability = baselineProbabilityForCharacter(character, candidateCharacters);
+  const previousBalance = characterBalance(character);
+  const nextBalance = Math.min(
+    Math.max(previousBalance + (correct ? -1 : 1), MIN_ANSWER_BALANCE),
+    MAX_ANSWER_BALANCE
+  );
+  weightState[character] = nextBalance;
   saveWeightState();
+  const nextWeight = characterWeight(character);
+  const nextProbability = baselineProbabilityForCharacter(character, candidateCharacters);
+  renderWeightDebugPanel();
+  return { previousWeight, nextWeight, previousProbability, nextProbability, previousBalance, nextBalance };
+}
+
+function addWeightChangeLog(character, correct, change) {
+  const previousBalance = change.previousBalance > 0 ? `+${change.previousBalance}` : `${change.previousBalance}`;
+  const nextBalance = change.nextBalance > 0 ? `+${change.nextBalance}` : `${change.nextBalance}`;
+  addLog(`【權重更新】「${character}」${correct ? "答對" : "答錯"}｜差值 ${previousBalance}→${nextBalance}｜權重 ${change.previousWeight.toFixed(2)}×→${change.nextWeight.toFixed(2)}×｜基準機率 ${(change.previousProbability * 100).toFixed(2)}%→${(change.nextProbability * 100).toFixed(2)}%`, "weight-debug-log");
+}
+
+function applyWeightDebugVisibility() {
+  elements.gameDebugLayout.classList.toggle("weight-debug-hidden", !showWeightDebugInfo);
+  elements.weightDebugPanel.hidden = !showWeightDebugInfo;
+  elements.weightDebugToggle.textContent = showWeightDebugInfo ? "隱藏權重" : "顯示權重";
+  elements.weightDebugToggle.setAttribute("aria-pressed", String(showWeightDebugInfo));
+
+  const challengeSourceBase = elements.challengeSource.dataset.baseText;
+  if (challengeSourceBase) {
+    const weightDebugLabel = showWeightDebugInfo && state.quiz ? `・權重 ${state.quiz.weight.toFixed(2)}×` : "";
+    elements.challengeSource.textContent = `${challengeSourceBase}${weightDebugLabel}`;
+  }
+}
+
+function renderWeightDebugPanel() {
+  const learnedNames = [...learnedCharacterNames()];
+  const validEntries = new Map(getLearnedCharacters().map(entry => [entry.character, entry]));
+  const rows = learnedNames.map(character => {
+    const validEntry = validEntries.get(character);
+    return {
+      character,
+      zhuyin: validEntry?.zhuyin || "缺少注音",
+      eligible: Boolean(validEntry),
+      balance: characterBalance(character),
+      weight: characterWeight(character)
+    };
+  });
+  const totalWeight = rows.reduce((sum, row) => sum + (row.eligible ? row.weight : 0), 0);
+
+  rows.forEach(row => {
+    row.probability = row.eligible && totalWeight > 0 ? row.weight / totalWeight : 0;
+  });
+  rows.sort((first, second) => second.weight - first.weight || first.character.localeCompare(second.character, "zh-Hant"));
+
+  elements.weightDebugSummary.textContent = `${rows.length} 字・可出題 ${validEntries.size}`;
+  elements.weightDebugList.innerHTML = "";
+
+  if (!rows.length) {
+    const empty = document.createElement("li");
+    empty.className = "weight-debug-empty";
+    empty.textContent = "目前沒有已學字";
+    elements.weightDebugList.appendChild(empty);
+    return;
+  }
+
+  const highestWeight = rows[0].weight;
+  rows.forEach(row => {
+    const item = document.createElement("li");
+    item.className = "weight-debug-row";
+    if (row.weight === highestWeight) item.classList.add("highest");
+    if (!row.eligible) item.classList.add("unavailable");
+
+    const word = document.createElement("span");
+    word.className = "weight-debug-word";
+    const character = document.createElement("strong");
+    character.textContent = row.character;
+    const zhuyin = document.createElement("small");
+    zhuyin.textContent = row.zhuyin;
+    word.append(character, zhuyin);
+
+    const weight = document.createElement("b");
+    weight.textContent = `${row.weight.toFixed(2)}×`;
+    weight.title = `答錯減答對：${row.balance > 0 ? "+" : ""}${row.balance}`;
+    const probability = document.createElement("span");
+    probability.textContent = `${(row.probability * 100).toFixed(2)}%`;
+    item.append(word, weight, probability);
+    elements.weightDebugList.appendChild(item);
+  });
 }
 
 async function loadZhuyinData() {
@@ -262,6 +387,7 @@ async function loadZhuyinData() {
 
   zhuyinMap = { ...FALLBACK_ZHUYIN, ...loadedEntries };
   backfillLearnedCharacterPronunciations();
+  renderWeightDebugPanel();
 }
 
 function backfillLearnedCharacterPronunciations() {
@@ -335,6 +461,10 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const pronunciation = selectedEntry.zhuyin;
   const promptPronunciation = toneQuiz ? zhuyinWithoutTone(pronunciation) : pronunciation;
   const correctAnswer = toneQuiz ? toneAnswerFromZhuyin(pronunciation) : reverseQuiz ? character : pronunciation;
+  const selectionDebug = characterSelectionProbability(candidates, selectedEntry, highestWeightQuiz);
+  const selectionMode = bossQuiz
+    ? "魔王字庫"
+    : highestWeightQuiz ? "最高權重" : toneQuiz ? "聲調" : reverseQuiz ? "注音選字" : "一般加權";
   lastQuizCharacter = character;
   const reverseDistractors = reverseQuiz
     ? candidates
@@ -359,6 +489,14 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     promptPronunciation,
     correctAnswer,
     weight: selectedEntry.weight,
+    selectionProbability: selectionDebug.probability,
+    candidateCount: selectionDebug.candidateCount,
+    eligibleCandidateCount: selectionDebug.eligibleCandidateCount,
+    excludedLastCharacter: selectionDebug.excludedLastCharacter,
+    rawLearnedCount: learnedCharacterNames().size,
+    validLearnedCount: learnedCharacters.length,
+    selectionMode,
+    candidateCharacters: candidates.map(entry => entry.character),
     answers,
     damage,
     enemyIndex,
@@ -382,11 +520,11 @@ function animate(element, className) {
   window.setTimeout(() => element.classList.remove(className), 600);
 }
 
-function addLog(text) {
+function addLog(text, className = "") {
   const item = document.createElement("li");
   item.textContent = text;
+  if (className) item.classList.add(className);
   elements.log.prepend(item);
-  while (elements.log.children.length > 5) elements.log.lastElementChild.remove();
 }
 
 function battleStartMessage() {
@@ -438,7 +576,7 @@ function livingEnemyIndexes() {
 
 function updateUI() {
   elements.round.textContent = state.round;
-  elements.playerHp.textContent = `${state.player.hp} / ${state.player.maxHp}`;
+  elements.playerHp.textContent = `${state.player.hp.toLocaleString()} / ${state.player.maxHp.toLocaleString()}`;
   elements.playerHpBar.style.width = `${state.player.hp}%`;
   state.enemies.forEach((enemy, index) => {
     const unit = elements.enemyParty.querySelector(`[data-enemy-index="${index}"]`);
@@ -525,6 +663,9 @@ async function startEnemyAttack() {
   const damage = randomEnemyDamage();
   state.phase = "defense";
   state.quiz = createQuiz(damage, enemyIndex, strike, totalStrikes);
+  const debug = state.quiz;
+  const exclusionDebug = debug.excludedLastCharacter ? `排除上一題「${debug.excludedLastCharacter}」` : "未排除上一題";
+  addLog(`【權重除錯】${enemy.name}／${debug.selectionMode}｜抽中「${debug.character}」 ${debug.weight.toFixed(2)}×／${(debug.selectionProbability * 100).toFixed(2)}%｜候選 ${debug.candidateCount}→實際池 ${debug.eligibleCandidateCount}｜已學儲存 ${debug.rawLearnedCount}／有效注音 ${debug.validLearnedCount}｜${exclusionDebug}`, "weight-debug-log");
   const defenseTitle = totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定";
   const defenseInstruction = enemy.timedDefense
     ? "10 秒內選出正確注音！"
@@ -548,7 +689,10 @@ function showDefenseChallenge() {
         ? (quiz.usingFallback ? "注音選字・試玩字" : "注音選字・已學會的字")
       : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
-  elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}・權重 ${quiz.weight.toFixed(2)}×`;
+  const challengeSourceBase = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}`;
+  const weightDebugLabel = showWeightDebugInfo ? `・權重 ${quiz.weight.toFixed(2)}×` : "";
+  elements.challengeSource.dataset.baseText = challengeSourceBase;
+  elements.challengeSource.textContent = `${challengeSourceBase}${weightDebugLabel}`;
   elements.challengeTitle.textContent = quiz.toneQuiz
     ? "選出正確的聲調，擋下攻擊！"
     : quiz.reverseQuiz ? "選出符合注音的中文字，擋下攻擊！" : "選出正確的注音，擋下攻擊！";
@@ -622,7 +766,7 @@ function handleDefenseTimeout() {
   quiz.resolved = true;
   state.phase = "correction";
   clearDefenseTimer();
-  recordQuizResult(quiz.character, false);
+  const weightChange = recordQuizResult(quiz.character, false, quiz.candidateCharacters);
   revealCorrectAnswer();
   elements.challengeCard.classList.add("timed-out");
   elements.challengeFeedback.textContent = `時間到！「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
@@ -630,6 +774,7 @@ function handleDefenseTimeout() {
   elements.correctionConfirm.hidden = false;
   elements.correctionConfirm.focus();
   addLog(`時間到，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
+  addWeightChangeLog(quiz.character, false, weightChange);
 }
 
 function expandBossWordList(enemyIndex) {
@@ -654,7 +799,7 @@ async function resolveDefense(selectedAnswer) {
   quiz.resolved = true;
   clearDefenseTimer();
   const blocked = selectedAnswer === quiz.correctAnswer;
-  recordQuizResult(quiz.character, blocked);
+  const weightChange = recordQuizResult(quiz.character, blocked, quiz.candidateCharacters);
   const buttons = [...elements.shieldOptions.querySelectorAll("button")];
 
   buttons.forEach((button) => {
@@ -674,6 +819,7 @@ async function resolveDefense(selectedAnswer) {
       : quiz.reverseQuiz
         ? `答對了！${quiz.pronunciation} 對應「${quiz.character}」，成功擋下攻擊。`
         : `答對了！「${quiz.character}」的注音是 ${quiz.correctAnswer}，成功擋下攻擊。`);
+    addWeightChangeLog(quiz.character, true, weightChange);
     await wait(850);
     completeDefense(true);
   } else {
@@ -691,6 +837,7 @@ async function resolveDefense(selectedAnswer) {
       : quiz.reverseQuiz
         ? `答錯了，請確認 ${quiz.pronunciation} 對應「${quiz.character}」。`
         : `答錯了，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
+    addWeightChangeLog(quiz.character, false, weightChange);
   }
 }
 
@@ -759,7 +906,7 @@ function endBattle(victory) {
   $("#result-emblem").textContent = victory ? "✦" : "◆";
   $("#result-copy").textContent = victory ? `你擊倒了 ${state.enemies.length} 名敵人。` : "主角失去戰鬥能力，再試一次吧。";
   $("#result-rounds").textContent = state.round;
-  $("#result-hp").textContent = state.player.hp;
+  $("#result-hp").textContent = state.player.hp.toLocaleString();
   window.setTimeout(() => {
     elements.overlay.hidden = false;
     $("#restart-button").focus();
@@ -790,8 +937,14 @@ elements.correctionConfirm.addEventListener("click", () => {
 });
 $("#restart-button").addEventListener("click", restart);
 $("#restart-small").addEventListener("click", restart);
+elements.weightDebugToggle.addEventListener("click", () => {
+  showWeightDebugInfo = !showWeightDebugInfo;
+  applyWeightDebugVisibility();
+});
 
 renderEnemies();
 addLog(battleStartMessage());
 updateUI();
+applyWeightDebugVisibility();
+renderWeightDebugPanel();
 loadZhuyinData();
