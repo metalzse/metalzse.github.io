@@ -1,6 +1,7 @@
 const stateKey = `adventure-progress:${STORY.id}`;
 const inventoryKey = `adventure-inventory:${STORY.id}`;
 const sharedLearnedCharactersKey = "adventure-learned-characters";
+const learnedCharactersVersionKey = "adventure-learned-characters-version";
 const readingDifficultyKey = "adventure-reading-difficulty";
 const gameInfoSeenKey = "adventure-game-info-version";
 const readingDifficulties = ["easy", "practice", "challenge"];
@@ -49,23 +50,52 @@ function charactersInText(text) {
   return [...new Set(Array.from(String(text)).filter(isChineseText))];
 }
 
+function normalizeLearnedCharacters(value) {
+  if (!Array.isArray(value)) return [];
+  const entries = new Map();
+
+  value.forEach(item => {
+    if (typeof item === "string") {
+      charactersInText(item).forEach(character => {
+        if (!entries.has(character)) entries.set(character, { character, zhuyin: "" });
+      });
+      return;
+    }
+
+    if (!item || typeof item !== "object") return;
+    const character = charactersInText(item.character || item.text || "")[0];
+    if (!character) return;
+    const zhuyin = typeof item.zhuyin === "string" ? item.zhuyin.trim() : "";
+    const current = entries.get(character);
+    if (!current || (!current.zhuyin && zhuyin)) entries.set(character, { character, zhuyin });
+  });
+
+  return [...entries.values()];
+}
+
 function getLearnedCharacters() {
   try {
-    return JSON.parse(localStorage.getItem(sharedLearnedCharactersKey) || "[]");
+    const saved = JSON.parse(localStorage.getItem(sharedLearnedCharactersKey) || "[]");
+    const normalized = normalizeLearnedCharacters(saved);
+    if (JSON.stringify(saved) !== JSON.stringify(normalized)) {
+      localStorage.setItem(sharedLearnedCharactersKey, JSON.stringify(normalized));
+    }
+    return normalized;
   } catch {
     return [];
   }
 }
 
 function setLearnedCharacters(characters) {
-  localStorage.setItem(sharedLearnedCharactersKey, JSON.stringify([...new Set(characters)]));
+  localStorage.setItem(sharedLearnedCharactersKey, JSON.stringify(normalizeLearnedCharacters(characters)));
+  localStorage.setItem(learnedCharactersVersionKey, "2");
 }
 
 function hasLearnedCharacters(text) {
   const characters = charactersInText(text);
   if (!characters.length) return false;
   const learnedCharacters = getLearnedCharacters();
-  return characters.every(character => learnedCharacters.includes(character));
+  return characters.every(character => learnedCharacters.some(entry => entry.character === character));
 }
 
 function getReadingDifficulty() {
@@ -87,36 +117,34 @@ function shouldShowZhuyin(text, options = {}) {
   return !hasLearnedCharacters(text);
 }
 
-function toggleLearnedCharacters(text) {
+function toggleLearnedCharacters(text, zhuyin = "") {
   const characters = charactersInText(text);
   if (!characters.length) return false;
 
   const learnedCharacters = getLearnedCharacters();
-  const learned = characters.every(character => learnedCharacters.includes(character));
+  const learned = characters.every(character => learnedCharacters.some(entry => entry.character === character));
 
   if (learned) {
-    setLearnedCharacters(learnedCharacters.filter(character => !characters.includes(character)));
+    setLearnedCharacters(learnedCharacters.filter(entry => !characters.includes(entry.character)));
     return false;
   }
 
-  setLearnedCharacters([...learnedCharacters, ...characters]);
+  const newEntries = characters.map(character => ({
+    character,
+    zhuyin: characters.length === 1 ? String(zhuyin || "").trim() : ""
+  }));
+  setLearnedCharacters([...learnedCharacters, ...newEntries]);
   return true;
 }
 
 function learnedCharactersOutput() {
   const characters = getLearnedCharacters();
   if (!characters.length) return "";
-  return [
-    "已學會的字",
-    `共 ${characters.length} 字`,
-    "",
-    characters.join("\n"),
-    ""
-  ].join("\n");
+  return `${JSON.stringify(characters, null, 2)}\n`;
 }
 
-function downloadText(filename, content) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+function downloadText(filename, content, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -133,7 +161,7 @@ function exportLearnedCharacters() {
     window.alert("目前沒有已學會的字。");
     return;
   }
-  downloadText("learned-characters.txt", output);
+  downloadText("learned-characters.json", output, "application/json;charset=utf-8");
 }
 
 function learnedCharacterAttributes(text, interactive, options = {}) {
@@ -141,7 +169,8 @@ function learnedCharacterAttributes(text, interactive, options = {}) {
   if (interactive) classes.push("learnable-text");
   if (hasLearnedCharacters(text)) classes.push("learned-text");
   if (options.hasZhuyin && !shouldShowZhuyin(text, options)) classes.push("zhuyin-hidden");
-  return `class="${classes.join(" ")}" data-learn-text="${escapeHtml(text)}"`;
+  const zhuyinAttribute = options.zhuyin ? ` data-learn-zhuyin="${escapeHtml(options.zhuyin)}"` : "";
+  return `class="${classes.join(" ")}" data-learn-text="${escapeHtml(text)}"${zhuyinAttribute}`;
 }
 
 function makePlainText(text, options = {}) {
@@ -156,7 +185,7 @@ function makeRuby(token, options = {}) {
   if (typeof token === "string") return makePlainText(token, options);
   if (!token || !token.text) return "";
   const interactive = options.interactive !== false;
-  const attributes = learnedCharacterAttributes(token.text, interactive, { ...options, hasZhuyin: Boolean(token.zhuyin) });
+  const attributes = learnedCharacterAttributes(token.text, interactive, { ...options, hasZhuyin: Boolean(token.zhuyin), zhuyin: token.zhuyin });
   if (!token.zhuyin) return `<span ${attributes}>${escapeHtml(token.text)}</span>`;
   return `<ruby ${attributes}>${escapeHtml(token.text)}<rt>${escapeHtml(token.zhuyin)}</rt></ruby>`;
 }
@@ -241,7 +270,7 @@ function bindLearningClicks(app) {
       event.stopPropagation();
       const text = element.dataset.learnText;
       if (!text) return;
-      toggleLearnedCharacters(text);
+      toggleLearnedCharacters(text, element.dataset.learnZhuyin || "");
       syncLearnedCharacters(app);
     });
   });

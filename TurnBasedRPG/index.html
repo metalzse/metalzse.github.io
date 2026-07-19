@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101923">
+  <title>餘燼試煉｜回合制 RPG 原型</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <a class="back-link" href="../index.html" aria-label="回到遊戲選單">← 返回選單</a>
+      <div class="round-pill" aria-live="polite">第 <span id="round-number">1</span> 回合</div>
+      <span class="prototype-label">簡易戰鬥原型</span>
+    </header>
+
+    <section class="battlefield" aria-label="戰鬥場景">
+      <div class="moon" aria-hidden="true"></div>
+      <div class="mountains" aria-hidden="true"></div>
+      <div class="mist mist-one" aria-hidden="true"></div>
+      <div class="mist mist-two" aria-hidden="true"></div>
+
+      <article class="fighter enemy-side" id="enemy-fighter">
+        <div class="enemy-party" id="enemy-party" aria-label="敵人隊伍"></div>
+      </article>
+
+      <div class="versus-mark" aria-hidden="true">VS</div>
+
+      <article class="fighter hero-side" id="hero-fighter">
+        <div class="hero sprite" aria-label="見習勇者">
+          <div class="hero-head"></div><div class="hero-cape"></div><div class="hero-body"></div>
+          <div class="sword"><span></span></div><div class="shield">✦</div>
+        </div>
+        <div class="status-card hero-card">
+          <div class="name-row">
+            <h1>見習勇者</h1>
+            <span class="level">LV. 4</span>
+          </div>
+          <div class="bar-label"><span>生命</span><span id="player-hp-text">100 / 100</span></div>
+          <div class="meter"><div class="meter-fill player-hp" id="player-hp-bar"></div></div>
+        </div>
+      </article>
+
+      <section class="defense-challenge" id="defense-challenge" aria-labelledby="challenge-title" hidden>
+        <div class="challenge-card">
+          <p class="challenge-kicker" id="challenge-source">已學會的字</p>
+          <h2 id="challenge-title">選出正確的注音，擋下攻擊！</h2>
+          <div class="challenge-word" id="challenge-word" aria-label="題目"></div>
+          <div class="shield-options" id="shield-options" role="group" aria-label="選擇正確的注音"></div>
+          <p class="challenge-feedback" id="challenge-feedback" aria-live="assertive">選擇一面盾牌</p>
+          <button class="correction-confirm" id="correction-confirm" type="button" hidden>我知道了，繼續</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="control-panel" aria-label="戰鬥指令">
+      <div class="turn-message" id="turn-message" aria-live="assertive">
+        <span class="message-icon">⚔</span>
+        <p><strong>輪到你了</strong><span>按下攻擊開始戰鬥</span></p>
+      </div>
+      <div class="actions single-action" id="actions">
+        <button class="action-button attack" data-action="attack" type="button">
+          <span class="action-icon">⚔</span><span><strong>攻擊</strong><small>對敵人造成傷害</small></span>
+        </button>
+      </div>
+      <div class="battle-log-wrap">
+        <div class="log-title"><span>戰況紀錄</span><button id="restart-small" type="button">重新開始</button></div>
+        <ol class="battle-log" id="battle-log" aria-live="polite"></ol>
+      </div>
+    </section>
+  </main>
+
+  <div class="result-overlay" id="result-overlay" hidden>
+    <section class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <div class="result-emblem" id="result-emblem">✦</div>
+      <p class="eyebrow" id="result-eyebrow">試煉完成</p>
+      <h2 id="result-title">勝利！</h2>
+      <p id="result-copy">你擊倒了苔岩巨像。</p>
+      <div class="result-stats"><span>經過回合 <b id="result-rounds">0</b></span><span>剩餘生命 <b id="result-hp">0</b></span></div>
+      <button class="restart-button" id="restart-button" type="button">再次挑戰</button>
+    </section>
+  </div>
+
+  <script src="../ZhuyinAdventure/zhuyin-map.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
