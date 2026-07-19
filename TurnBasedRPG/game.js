@@ -243,7 +243,9 @@ function updateUI() {
     unit.querySelector(".enemy-hp").style.width = `${enemy.hp / enemy.maxHp * 100}%`;
     unit.querySelector(".enemy-hp-text").textContent = enemy.hp > 0 ? `${enemy.hp} / ${enemy.maxHp}` : "已擊倒";
   });
-  elements.attackButton.disabled = state.phase !== "player" || state.finished;
+  const playerCanAct = state.phase === "player" && !state.finished;
+  elements.attackButton.disabled = !playerCanAct;
+  elements.attackButton.classList.toggle("player-ready", playerCanAct);
 }
 
 async function playerAttack() {
