@@ -50,7 +50,7 @@
           <div class="challenge-word" id="challenge-word" aria-label="題目"></div>
           <p class="challenge-pronunciation" id="challenge-pronunciation" hidden></p>
           <div class="challenge-timer" id="challenge-timer" aria-live="polite" hidden>
-            <div class="timer-label"><span>限時防禦</span><strong><span id="timer-value">10</span> 秒</strong></div>
+            <div class="timer-label"><span id="timer-label-text">限時防禦</span><strong><span id="timer-value">10</span> 秒</strong></div>
             <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
           </div>
           <div class="shield-options" id="shield-options" role="group" aria-label="選擇正確的注音"></div>
@@ -66,9 +66,12 @@
         <span class="message-icon">⚔</span>
         <p><strong>輪到你了</strong><span>按下攻擊開始戰鬥</span></p>
       </div>
-      <div class="actions single-action" id="actions">
+      <div class="actions" id="actions">
         <button class="action-button attack" data-action="attack" type="button">
           <span class="action-icon">⚔</span><span><strong>攻擊</strong><small>對敵人造成傷害</small></span>
+        </button>
+        <button class="action-button special-attack-button" data-action="special" type="button" disabled>
+          <span class="action-icon">✦</span><span><strong>特殊攻擊</strong><span class="special-charge-track" aria-hidden="true"><span class="special-charge-fill" id="special-charge-fill"></span></span><small class="visually-hidden" id="special-charge-text">特殊攻擊充能 0 / 5</small></span>
         </button>
       </div>
       <div class="battle-log-wrap">

@@ -31,6 +31,9 @@ const MAX_ANSWER_BALANCE = 4;
 const TONE_ANSWER_OPTIONS = ["1 聲", "2 聲", "3 聲", "4 聲", "˙"];
 const HEALING_SPELL_OPTION_COUNT = 6;
 const HEALING_SPELL_AMOUNT = 10;
+const SPECIAL_ATTACK_CHARGE_REQUIRED = 5;
+const SPECIAL_ATTACK_INITIAL_SECONDS = 10;
+const SPECIAL_ATTACK_MIN_SECONDS = 1;
 const ZHUYIN_COMPONENTS = [
   "ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ", "ㄍ", "ㄎ", "ㄏ",
   "ㄐ", "ㄑ", "ㄒ", "ㄓ", "ㄔ", "ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ",
@@ -124,7 +127,9 @@ const createState = () => ({
   player: { hp: 100, maxHp: 100 },
   enemies: createEnemies(),
   enemyQueue: [],
-  quiz: null
+  quiz: null,
+  normalAttackCount: 0,
+  specialStreak: 0
 });
 
 let state = createState();
@@ -142,6 +147,9 @@ const elements = {
   playerHpBar: $("#player-hp-bar"),
   enemyParty: $("#enemy-party"),
   attackButton: $('[data-action="attack"]'),
+  specialAttackButton: $('[data-action="special"]'),
+  specialChargeFill: $("#special-charge-fill"),
+  specialChargeText: $("#special-charge-text"),
   message: $("#turn-message"),
   log: $("#battle-log"),
   overlay: $("#result-overlay"),
@@ -153,6 +161,7 @@ const elements = {
   challengeWord: $("#challenge-word"),
   challengePronunciation: $("#challenge-pronunciation"),
   challengeTimer: $("#challenge-timer"),
+  timerLabelText: $("#timer-label-text"),
   timerValue: $("#timer-value"),
   timerFill: $("#timer-fill"),
   shieldOptions: $("#shield-options"),
@@ -550,6 +559,49 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   };
 }
 
+function createSpecialAttackQuiz() {
+  const learnedCharacters = getLearnedCharacters();
+  const usingFallback = learnedCharacters.length === 0;
+  const candidates = usingFallback
+    ? Object.entries(FALLBACK_ZHUYIN).map(([character, zhuyin]) => ({ character, zhuyin }))
+    : learnedCharacters;
+  const selectedEntry = weightedCharacterPick(candidates);
+  const selectionDebug = characterSelectionProbability(candidates, selectedEntry, false);
+  const correctAnswer = selectedEntry.zhuyin;
+  const answers = shuffle([
+    correctAnswer,
+    ...shuffle([...new Set(Object.values(zhuyinMap))].filter(answer => answer !== correctAnswer)).slice(0, 2)
+  ]);
+  lastQuizCharacter = selectedEntry.character;
+
+  return {
+    character: selectedEntry.character,
+    pronunciation: selectedEntry.zhuyin,
+    promptPronunciation: selectedEntry.zhuyin,
+    correctAnswer,
+    weight: selectedEntry.weight,
+    selectionProbability: selectionDebug.probability,
+    candidateCount: selectionDebug.candidateCount,
+    eligibleCandidateCount: selectionDebug.eligibleCandidateCount,
+    excludedLastCharacter: selectionDebug.excludedLastCharacter,
+    rawLearnedCount: learnedCharacterNames().size,
+    validLearnedCount: learnedCharacters.length,
+    selectionMode: "特殊攻擊連擊",
+    candidateCharacters: candidates.map(entry => entry.character),
+    answers,
+    timedDefense: true,
+    timeLimit: Math.max(SPECIAL_ATTACK_MIN_SECONDS, SPECIAL_ATTACK_INITIAL_SECONDS - state.specialStreak),
+    specialAttackQuiz: true,
+    bossQuiz: false,
+    highestWeightQuiz: false,
+    toneQuiz: false,
+    reverseQuiz: false,
+    healingQuiz: false,
+    usingFallback,
+    resolved: false
+  };
+}
+
 function animate(element, className) {
   element.classList.remove(className);
   void element.offsetWidth;
@@ -626,8 +678,14 @@ function updateUI() {
     if (bossTrait) bossTrait.textContent = `占 2 人・魔王字庫 ${enemy.wordList.length} 字`;
   });
   const playerCanAct = state.phase === "player" && !state.finished;
+  const specialReady = playerCanAct && state.normalAttackCount >= SPECIAL_ATTACK_CHARGE_REQUIRED;
   elements.attackButton.disabled = !playerCanAct;
   elements.attackButton.classList.toggle("player-ready", playerCanAct);
+  elements.specialAttackButton.disabled = !specialReady;
+  elements.specialAttackButton.classList.toggle("special-ready", specialReady);
+  elements.specialChargeFill.style.width = `${state.normalAttackCount / SPECIAL_ATTACK_CHARGE_REQUIRED * 100}%`;
+  elements.specialChargeText.textContent = `特殊攻擊充能 ${state.normalAttackCount} / ${SPECIAL_ATTACK_CHARGE_REQUIRED}${specialReady ? "，可以發動" : ""}`;
+  elements.specialAttackButton.setAttribute("aria-label", elements.specialChargeText.textContent);
 }
 
 async function playerAttack() {
@@ -642,8 +700,11 @@ async function playerAttack() {
   const target = state.enemies[targetIndex];
   const damage = randomDamage();
   target.hp = Math.max(0, target.hp - damage);
+  const previousCharge = state.normalAttackCount;
+  state.normalAttackCount = Math.min(SPECIAL_ATTACK_CHARGE_REQUIRED, state.normalAttackCount + 1);
   animate(enemyStage(targetIndex), "hit");
   addLog(`主角攻擊 ${target.name}，造成 ${damage} 點傷害。`);
+  if (previousCharge < SPECIAL_ATTACK_CHARGE_REQUIRED && state.normalAttackCount === SPECIAL_ATTACK_CHARGE_REQUIRED) addLog("特殊攻擊已充能完成！");
   updateUI();
 
   if (livingEnemyIndexes().length === 0) {
@@ -651,10 +712,35 @@ async function playerAttack() {
     return;
   }
 
+  await beginEnemyTurnAfterPlayerAction();
+}
+
+async function beginEnemyTurnAfterPlayerAction() {
   const livingCount = livingEnemyIndexes().length;
   setMessage("敵人回合", `${livingCount} 名敵人準備行動…`, "◆");
   await wait(650);
-  startEnemyTurn();
+  if (!state.finished) startEnemyTurn();
+}
+
+async function startSpecialAttack() {
+  if (state.phase !== "player" || state.finished || state.normalAttackCount < SPECIAL_ATTACK_CHARGE_REQUIRED) return;
+  state.normalAttackCount = 0;
+  state.specialStreak = 0;
+  state.phase = "special-attack";
+  setMessage("特殊攻擊！", "連續答對注音，發動連擊", "✦");
+  addLog("主角發動特殊攻擊，開始累積注音連擊！");
+  updateUI();
+  await wait(300);
+  if (state.phase !== "special-attack" || state.finished) return;
+  showNextSpecialAttackQuiz();
+}
+
+function showNextSpecialAttackQuiz() {
+  state.quiz = createSpecialAttackQuiz();
+  const debug = state.quiz;
+  const exclusionDebug = debug.excludedLastCharacter ? `排除上一題「${debug.excludedLastCharacter}」` : "未排除上一題";
+  addLog(`【權重除錯】主角特殊攻擊／${debug.selectionMode}｜抽中「${debug.character}」 ${debug.weight.toFixed(2)}×／${(debug.selectionProbability * 100).toFixed(2)}%｜候選 ${debug.candidateCount}→實際池 ${debug.eligibleCandidateCount}｜${exclusionDebug}`, "weight-debug-log");
+  showDefenseChallenge();
 }
 
 function startEnemyTurn() {
@@ -721,7 +807,9 @@ async function startEnemyAttack() {
 
 function showDefenseChallenge() {
   const quiz = state.quiz;
-  const source = quiz.bossQuiz
+  const source = quiz.specialAttackQuiz
+    ? (quiz.usingFallback ? "特殊連擊・試玩字" : "特殊連擊・已學會的字")
+    : quiz.bossQuiz
     ? `魔王獨立字庫 ${quiz.bossWordCount} 字`
     : quiz.highestWeightQuiz
       ? "目前最高權重字"
@@ -733,11 +821,15 @@ function showDefenseChallenge() {
         ? (quiz.usingFallback ? "治療咒語・試玩字" : "治療咒語・已學會的字")
       : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
-  const challengeSourceBase = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}`;
+  const challengeSourceBase = quiz.specialAttackQuiz
+    ? `連擊 ${state.specialStreak}・${quiz.timeLimit} 秒限時・${source}`
+    : `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}`;
   const weightDebugLabel = showWeightDebugInfo ? `・權重 ${quiz.weight.toFixed(2)}×` : "";
   elements.challengeSource.dataset.baseText = challengeSourceBase;
   elements.challengeSource.textContent = `${challengeSourceBase}${weightDebugLabel}`;
-  elements.challengeTitle.textContent = quiz.healingQuiz
+  elements.challengeTitle.textContent = quiz.specialAttackQuiz
+    ? "選出正確注音，累積特殊連擊！"
+    : quiz.healingQuiz
     ? "選出這個字的完整注音與聲調！"
     : quiz.toneQuiz
     ? "選出正確的聲調，擋下攻擊！"
@@ -748,7 +840,9 @@ function showDefenseChallenge() {
     : quiz.reverseQuiz ? `題目注音 ${quiz.pronunciation}` : `題目 ${quiz.character}`);
   elements.challengePronunciation.textContent = quiz.promptPronunciation;
   elements.challengePronunciation.hidden = !quiz.toneQuiz;
-  elements.challengeFeedback.textContent = quiz.healingQuiz
+  elements.challengeFeedback.textContent = quiz.specialAttackQuiz
+    ? `目前累積 ${state.specialStreak} 次攻擊；答錯後一口氣發動`
+    : quiz.healingQuiz
     ? "可複選注音元件，選好後按確認組合"
     : `選對就能擋下 ${quiz.damage} 點傷害`;
   elements.challengeFeedback.className = "challenge-feedback";
@@ -759,10 +853,14 @@ function showDefenseChallenge() {
   elements.challengeCard.classList.toggle("tone-defense", quiz.toneQuiz);
   elements.challengeCard.classList.toggle("reverse-defense", quiz.reverseQuiz);
   elements.challengeCard.classList.toggle("healing-spell", quiz.healingQuiz);
+  elements.challengeCard.classList.toggle("special-attack-quiz", quiz.specialAttackQuiz);
   elements.challengeCard.classList.remove("timed-out");
   elements.challengeTimer.hidden = !quiz.timedDefense;
+  elements.timerLabelText.textContent = quiz.specialAttackQuiz ? "特殊連擊倒數" : "限時防禦";
   elements.shieldOptions.innerHTML = "";
-  elements.shieldOptions.setAttribute("aria-label", quiz.healingQuiz
+  elements.shieldOptions.setAttribute("aria-label", quiz.specialAttackQuiz
+    ? "選擇正確注音以累積特殊連擊"
+    : quiz.healingQuiz
     ? "選擇完整的注音與聲調"
     : quiz.toneQuiz
     ? "選擇正確的聲調"
@@ -771,13 +869,13 @@ function showDefenseChallenge() {
   quiz.answers.forEach((answer) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "quiz-shield";
+    button.className = quiz.specialAttackQuiz ? "quiz-sword" : "quiz-shield";
     button.dataset.answer = answer;
     button.setAttribute("aria-pressed", "false");
     const label = document.createElement("span");
     label.textContent = answer;
     button.appendChild(label);
-    button.setAttribute("aria-label", `${quiz.healingQuiz ? "注音元件" : "盾牌"} ${answer}`);
+    button.setAttribute("aria-label", `${quiz.specialAttackQuiz ? "劍" : quiz.healingQuiz ? "注音元件" : "盾牌"} ${answer}`);
     elements.shieldOptions.appendChild(button);
   });
 
@@ -855,12 +953,13 @@ function clearDefenseTimer() {
 
 function startDefenseTimer() {
   clearDefenseTimer();
-  defenseTimerDeadline = Date.now() + TIMED_DEFENSE_SECONDS * 1000;
+  const limitSeconds = state.quiz?.timeLimit || TIMED_DEFENSE_SECONDS;
+  defenseTimerDeadline = Date.now() + limitSeconds * 1000;
 
   const updateTimer = () => {
     const remaining = Math.max(0, defenseTimerDeadline - Date.now());
     elements.timerValue.textContent = Math.ceil(remaining / 1000);
-    elements.timerFill.style.width = `${remaining / (TIMED_DEFENSE_SECONDS * 1000) * 100}%`;
+    elements.timerFill.style.width = `${remaining / (limitSeconds * 1000) * 100}%`;
     if (remaining <= 0) handleDefenseTimeout();
   };
 
@@ -877,6 +976,11 @@ function revealCorrectAnswer() {
 
 function handleDefenseTimeout() {
   const quiz = state.quiz;
+  if (quiz?.specialAttackQuiz) {
+    if (state.phase !== "special-attack" || quiz.resolved) return;
+    failSpecialAttack("時間到！");
+    return;
+  }
   if (state.phase !== "defense" || !quiz?.timedDefense || quiz.resolved) return;
   quiz.resolved = true;
   state.phase = "correction";
@@ -890,6 +994,92 @@ function handleDefenseTimeout() {
   elements.correctionConfirm.focus();
   addLog(`時間到，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
   addWeightChangeLog(quiz.character, false, weightChange);
+}
+
+async function resolveSpecialAttack(selectedAnswer) {
+  const quiz = state.quiz;
+  if (state.phase !== "special-attack" || !quiz?.specialAttackQuiz || quiz.resolved) return;
+  quiz.resolved = true;
+  clearDefenseTimer();
+  const correct = selectedAnswer === quiz.correctAnswer;
+
+  if (!correct) {
+    failSpecialAttack("答錯了！", selectedAnswer, true);
+    return;
+  }
+
+  const weightChange = recordQuizResult(quiz.character, true, quiz.candidateCharacters);
+  elements.shieldOptions.querySelectorAll("button").forEach(button => {
+    button.disabled = true;
+    if (button.dataset.answer === quiz.correctAnswer) button.classList.add("correct");
+  });
+  state.specialStreak += 1;
+  elements.challengeFeedback.textContent = `答對！已累積 ${state.specialStreak} 次攻擊，準備下一題…`;
+  elements.challengeFeedback.classList.add("success");
+  addLog(`特殊攻擊答對「${quiz.character}」：${quiz.correctAnswer}，累積 ${state.specialStreak} 連擊。`);
+  addWeightChangeLog(quiz.character, true, weightChange);
+  await wait(520);
+  if (state.phase !== "special-attack" || state.finished || state.quiz !== quiz) return;
+  showNextSpecialAttackQuiz();
+}
+
+function failSpecialAttack(reason, selectedAnswer = "", alreadyResolved = false) {
+  const quiz = state.quiz;
+  if (!quiz?.specialAttackQuiz || (!alreadyResolved && quiz.resolved)) return;
+  quiz.resolved = true;
+  clearDefenseTimer();
+  state.phase = "correction";
+  const weightChange = recordQuizResult(quiz.character, false, quiz.candidateCharacters);
+  elements.shieldOptions.querySelectorAll("button").forEach(button => {
+    button.disabled = true;
+    if (button.dataset.answer === quiz.correctAnswer) button.classList.add("correct");
+    if (selectedAnswer && button.dataset.answer === selectedAnswer) button.classList.add("wrong");
+  });
+  elements.challengeCard.classList.add("timed-out");
+  elements.challengeFeedback.textContent = `${reason}「${quiz.character}」的正確注音是 ${quiz.correctAnswer}。確認後發動 ${state.specialStreak} 次攻擊。`;
+  elements.challengeFeedback.classList.add("failure");
+  elements.correctionConfirm.hidden = false;
+  elements.correctionConfirm.focus();
+  addLog(`${reason} 請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。特殊連擊累積 ${state.specialStreak} 次。`);
+  addWeightChangeLog(quiz.character, false, weightChange);
+}
+
+async function executeSpecialAttackCombo() {
+  const attackCount = state.specialStreak;
+  clearDefenseTimer();
+  elements.correctionConfirm.hidden = true;
+  elements.challenge.hidden = true;
+  state.quiz = null;
+  state.phase = "busy";
+  updateUI();
+
+  if (attackCount === 0) {
+    addLog("特殊攻擊沒有累積到任何連擊。");
+  } else {
+    setMessage("特殊連擊發動！", `依序發動 ${attackCount} 次隨機攻擊`, "⚔");
+    await wait(180);
+    for (let strike = 1; strike <= attackCount; strike += 1) {
+      const targets = livingEnemyIndexes();
+      if (!targets.length) break;
+      const targetIndex = randomItem(targets);
+      const target = state.enemies[targetIndex];
+      animate(elements.heroSprite, "special-attack-motion");
+      await wait(220);
+      const damage = randomDamage();
+      target.hp = Math.max(0, target.hp - damage);
+      animate(enemyStage(targetIndex), "special-hit");
+      addLog(`特殊連擊 ${strike} / ${attackCount}：攻擊 ${target.name}，造成 ${damage} 點傷害。`);
+      updateUI();
+      if (livingEnemyIndexes().length === 0) {
+        endBattle(true);
+        return;
+      }
+      await wait(430);
+    }
+  }
+
+  state.specialStreak = 0;
+  await beginEnemyTurnAfterPlayerAction();
 }
 
 function expandBossWordList(enemyIndex) {
@@ -1058,15 +1248,19 @@ function restart() {
 }
 
 elements.attackButton.addEventListener("click", playerAttack);
+elements.specialAttackButton.addEventListener("click", startSpecialAttack);
 elements.shieldOptions.addEventListener("click", (event) => {
   const shield = event.target.closest("[data-answer]");
   if (!shield) return;
-  if (state.quiz?.healingQuiz) toggleHealingComponent(shield);
+  if (state.quiz?.specialAttackQuiz) resolveSpecialAttack(shield.dataset.answer);
+  else if (state.quiz?.healingQuiz) toggleHealingComponent(shield);
   else resolveDefense(shield.dataset.answer);
 });
 elements.spellConfirm.addEventListener("click", resolveHealingSpell);
 elements.correctionConfirm.addEventListener("click", () => {
-  if (state.phase === "correction") completeDefense(false);
+  if (state.phase !== "correction") return;
+  if (state.quiz?.specialAttackQuiz) executeSpecialAttackCombo();
+  else completeDefense(false);
 });
 $("#restart-button").addEventListener("click", restart);
 $("#restart-small").addEventListener("click", restart);
