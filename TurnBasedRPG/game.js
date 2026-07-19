@@ -276,7 +276,7 @@ async function playerAttack() {
 function startEnemyTurn() {
   state.enemyQueue = livingEnemyIndexes().flatMap((enemyIndex) => {
     const enemy = state.enemies[enemyIndex];
-    const doubleStrike = !enemy.timedDefense && Math.random() < 0.15;
+    const doubleStrike = !enemy.timedDefense && Math.random() < 0.20;
     if (!doubleStrike) return [{ enemyIndex, strike: 1, totalStrikes: 1 }];
 
     addLog(`${state.enemies[enemyIndex].name} 使出雙擊！`);
