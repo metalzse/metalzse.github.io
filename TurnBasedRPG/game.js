@@ -14,7 +14,8 @@ const ENEMY_TYPES = [
   { type: "moss", baseName: "苔岩巨像", timedDefense: false },
   { type: "ember", baseName: "赤焰魔像", timedDefense: true },
   { type: "obsession", baseName: "執念魔像", timedDefense: false, highestWeightDefense: true },
-  { type: "tone", baseName: "聲調魔像", timedDefense: false, toneDefense: true }
+  { type: "tone", baseName: "聲調魔像", timedDefense: false, toneDefense: true },
+  { type: "reverse", baseName: "字形魔像", timedDefense: false, reverseDefense: true }
 ];
 const BOSS_TYPE = { type: "boss", baseName: "符文魔王", timedDefense: false };
 const BOSS_SPAWN_CHANCE = 0.20;
@@ -47,10 +48,33 @@ function availableBossWords(excludedCharacters = []) {
     .map(([character, zhuyin]) => ({ character, zhuyin }));
 }
 
+function canCreateReverseEnemy() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LEARNED_CHARACTERS_KEY) || "[]");
+    if (!Array.isArray(saved)) return false;
+    const pronunciations = new Set();
+
+    saved.forEach(item => {
+      const character = typeof item === "string" ? item : item?.character;
+      if (!character) return;
+      const storedZhuyin = typeof item === "object" && typeof item.zhuyin === "string" ? item.zhuyin.trim() : "";
+      const zhuyin = storedZhuyin || window.ZHUYIN_CHARACTER_MAP?.[character] || FALLBACK_ZHUYIN[character] || "";
+      if (zhuyin) pronunciations.add(zhuyin);
+    });
+
+    return pronunciations.size >= 3;
+  } catch {
+    return false;
+  }
+}
+
 function createRegularEnemies(count) {
   const maxHp = 80;
+  const enemyTypePool = canCreateReverseEnemy()
+    ? ENEMY_TYPES
+    : ENEMY_TYPES.filter(enemyType => !enemyType.reverseDefense);
   return Array.from({ length: count }, (_, index) => {
-    const enemyType = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+    const enemyType = enemyTypePool[Math.floor(Math.random() * enemyTypePool.length)];
     return {
       ...enemyType,
       name: count === 1 ? enemyType.baseName : `${enemyType.baseName} ${index + 1}`,
@@ -296,6 +320,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const bossQuiz = enemy.type === "boss";
   const highestWeightQuiz = Boolean(enemy.highestWeightDefense);
   const toneQuiz = Boolean(enemy.toneDefense);
+  const reverseQuiz = Boolean(enemy.reverseDefense);
   const learnedCharacters = getLearnedCharacters();
   const usingFallback = !bossQuiz && learnedCharacters.length === 0;
   const candidates = bossQuiz
@@ -309,10 +334,20 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const character = selectedEntry.character;
   const pronunciation = selectedEntry.zhuyin;
   const promptPronunciation = toneQuiz ? zhuyinWithoutTone(pronunciation) : pronunciation;
-  const correctAnswer = toneQuiz ? toneAnswerFromZhuyin(pronunciation) : pronunciation;
+  const correctAnswer = toneQuiz ? toneAnswerFromZhuyin(pronunciation) : reverseQuiz ? character : pronunciation;
   lastQuizCharacter = character;
+  const reverseDistractors = reverseQuiz
+    ? candidates
+      .filter(entry => entry.character !== character && entry.zhuyin !== pronunciation)
+      .map(entry => entry.character)
+    : [];
   const answers = toneQuiz
     ? [...TONE_ANSWER_OPTIONS]
+    : reverseQuiz
+      ? shuffle([
+          correctAnswer,
+          ...shuffle(reverseDistractors).slice(0, 2)
+        ])
     : shuffle([
         correctAnswer,
         ...shuffle([...new Set(Object.values(zhuyinMap))].filter(answer => answer !== correctAnswer)).slice(0, 2)
@@ -333,6 +368,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     bossQuiz,
     highestWeightQuiz,
     toneQuiz,
+    reverseQuiz,
     bossWordCount: bossQuiz ? enemy.wordList.length : 0,
     usingFallback,
     resolved: false
@@ -363,7 +399,7 @@ function setMessage(title, detail, icon) {
 }
 
 function monsterMarkup(enemy) {
-  const rune = enemy.type === "boss" ? "王" : enemy.type === "obsession" ? "重" : enemy.type === "tone" ? "聲" : "◇";
+  const rune = { boss: "王", obsession: "重", tone: "聲", reverse: "字" }[enemy.type] || "◇";
   return `<div class="monster-stage sprite enemy-${enemy.type}" aria-label="${enemy.name}">
     <div class="monster">
       <div class="monster-horn horn-left"></div><div class="monster-horn horn-right"></div>
@@ -382,6 +418,7 @@ function renderEnemies() {
         ${enemy.timedDefense ? '<span class="enemy-trait">10 秒限時</span>' : ""}
         ${enemy.highestWeightDefense ? '<span class="enemy-trait obsession-trait">鎖定最高權重</span>' : ""}
         ${enemy.toneDefense ? '<span class="enemy-trait tone-trait">聲調判定</span>' : ""}
+        ${enemy.reverseDefense ? '<span class="enemy-trait reverse-trait">注音選字</span>' : ""}
         ${enemy.type === "boss" ? `<span class="enemy-trait boss-trait">占 2 人・魔王字庫 ${enemy.wordList.length} 字</span>` : ""}
         <div class="meter"><div class="meter-fill enemy-hp"></div></div>
         <span class="enemy-hp-text"></span>
@@ -491,7 +528,9 @@ async function startEnemyAttack() {
   const defenseTitle = totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定";
   const defenseInstruction = enemy.timedDefense
     ? "10 秒內選出正確注音！"
-    : enemy.toneDefense ? "選出正確聲調擋下攻擊！" : "選出正確注音擋下攻擊！";
+    : enemy.toneDefense
+      ? "選出正確聲調擋下攻擊！"
+      : enemy.reverseDefense ? "選出正確中文字擋下攻擊！" : "選出正確注音擋下攻擊！";
   setMessage(defenseTitle, defenseInstruction, "⬟");
   showDefenseChallenge();
   updateUI();
@@ -505,12 +544,18 @@ function showDefenseChallenge() {
       ? "目前最高權重字"
       : quiz.toneQuiz
         ? (quiz.usingFallback ? "聲調判定・試玩字" : "聲調判定・已學會的字")
+      : quiz.reverseQuiz
+        ? (quiz.usingFallback ? "注音選字・試玩字" : "注音選字・已學會的字")
       : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
   elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}・權重 ${quiz.weight.toFixed(2)}×`;
-  elements.challengeTitle.textContent = quiz.toneQuiz ? "選出正確的聲調，擋下攻擊！" : "選出正確的注音，擋下攻擊！";
-  elements.challengeWord.textContent = quiz.character;
-  elements.challengeWord.setAttribute("aria-label", quiz.toneQuiz ? `題目 ${quiz.character}，無聲調注音 ${quiz.promptPronunciation}` : `題目 ${quiz.character}`);
+  elements.challengeTitle.textContent = quiz.toneQuiz
+    ? "選出正確的聲調，擋下攻擊！"
+    : quiz.reverseQuiz ? "選出符合注音的中文字，擋下攻擊！" : "選出正確的注音，擋下攻擊！";
+  elements.challengeWord.textContent = quiz.reverseQuiz ? quiz.pronunciation : quiz.character;
+  elements.challengeWord.setAttribute("aria-label", quiz.toneQuiz
+    ? `題目 ${quiz.character}，無聲調注音 ${quiz.promptPronunciation}`
+    : quiz.reverseQuiz ? `題目注音 ${quiz.pronunciation}` : `題目 ${quiz.character}`);
   elements.challengePronunciation.textContent = quiz.promptPronunciation;
   elements.challengePronunciation.hidden = !quiz.toneQuiz;
   elements.challengeFeedback.textContent = `選對就能擋下 ${quiz.damage} 點傷害`;
@@ -518,10 +563,13 @@ function showDefenseChallenge() {
   elements.correctionConfirm.hidden = true;
   elements.challengeCard.classList.toggle("timed-defense", quiz.timedDefense);
   elements.challengeCard.classList.toggle("tone-defense", quiz.toneQuiz);
+  elements.challengeCard.classList.toggle("reverse-defense", quiz.reverseQuiz);
   elements.challengeCard.classList.remove("timed-out");
   elements.challengeTimer.hidden = !quiz.timedDefense;
   elements.shieldOptions.innerHTML = "";
-  elements.shieldOptions.setAttribute("aria-label", quiz.toneQuiz ? "選擇正確的聲調" : "選擇正確的注音");
+  elements.shieldOptions.setAttribute("aria-label", quiz.toneQuiz
+    ? "選擇正確的聲調"
+    : quiz.reverseQuiz ? "選擇正確的中文字" : "選擇正確的注音");
 
   quiz.answers.forEach((answer) => {
     const button = document.createElement("button");
@@ -623,20 +671,26 @@ async function resolveDefense(selectedAnswer) {
     elements.challengeFeedback.classList.add("success");
     addLog(quiz.toneQuiz
       ? `答對了！「${quiz.character}」讀作 ${quiz.pronunciation}，是 ${quiz.correctAnswer}，成功擋下攻擊。`
-      : `答對了！「${quiz.character}」的注音是 ${quiz.correctAnswer}，成功擋下攻擊。`);
+      : quiz.reverseQuiz
+        ? `答對了！${quiz.pronunciation} 對應「${quiz.character}」，成功擋下攻擊。`
+        : `答對了！「${quiz.character}」的注音是 ${quiz.correctAnswer}，成功擋下攻擊。`);
     await wait(850);
     completeDefense(true);
   } else {
     state.phase = "correction";
     elements.challengeFeedback.textContent = quiz.toneQuiz
       ? `再看一次：「${quiz.character}」讀作 ${quiz.pronunciation}，正確答案是 ${quiz.correctAnswer}`
-      : `再看一次：「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
+      : quiz.reverseQuiz
+        ? `再看一次：${quiz.pronunciation} 對應的中文字是「${quiz.character}」`
+        : `再看一次：「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
     elements.challengeFeedback.classList.add("failure");
     elements.correctionConfirm.hidden = false;
     elements.correctionConfirm.focus();
     addLog(quiz.toneQuiz
       ? `答錯了，請確認「${quiz.character}」讀作 ${quiz.pronunciation}，是 ${quiz.correctAnswer}。`
-      : `答錯了，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
+      : quiz.reverseQuiz
+        ? `答錯了，請確認 ${quiz.pronunciation} 對應「${quiz.character}」。`
+        : `答錯了，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
   }
 }
 

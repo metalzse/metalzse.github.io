@@ -182,6 +182,14 @@ button { color: inherit; }
 .enemy-tone .rune { top: 31px; left: 35px; color: #ffe0f2; font-size: 32px; text-shadow: 0 0 16px #ff65bd; }
 .enemy-tone .eye { background: #ffe6f5; box-shadow: 0 0 13px 3px #ff56b5; }
 .enemy-unit-tone .enemy-nameplate { border-color: rgba(244, 111, 184, .46); background: rgba(54, 18, 43, .93); }
+.reverse-trait { border-color: rgba(155, 224, 112, .55); color: #c9f6aa; }
+.enemy-reverse .monster-head { border-color: #30401e; background: #708c3d; box-shadow: inset 13px -9px #50672b; }
+.enemy-reverse .monster-body { border-color: #2b3a1b; background: #637d35; box-shadow: inset -18px -13px #435524; }
+.enemy-reverse .monster-arm { border-color: #2b3a1b; background: #586f30; }
+.enemy-reverse .monster-horn { background: #b3c86a; }
+.enemy-reverse .rune { top: 31px; left: 35px; color: #efffc9; font-size: 34px; text-shadow: 0 0 16px #9de74f; }
+.enemy-reverse .eye { background: #f2ffd0; box-shadow: 0 0 13px 3px #8fdb48; }
+.enemy-unit-reverse .enemy-nameplate { border-color: rgba(145, 205, 93, .46); background: rgba(31, 43, 18, .93); }
 .boss-trait { border-color: rgba(196, 139, 255, .55); color: #dab8ff; }
 .enemy-boss .monster-head { border-color: #2b193e; background: #65428a; box-shadow: inset 13px -9px #41265f; }
 .enemy-boss .monster-body { border-color: #28183a; background: #583679; box-shadow: inset -18px -13px #351e50; }
@@ -343,6 +351,9 @@ button { color: inherit; }
 .challenge-card.tone-defense { width: min(100%, 760px); border-color: rgba(244, 111, 184, .6); box-shadow: 0 22px 65px rgba(0, 0, 0, .55), 0 0 28px rgba(255, 86, 181, .14); }
 .tone-defense .shield-options { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
 .tone-defense .quiz-shield { min-height: 116px; padding-inline: 4px; font-size: clamp(16px, 2.5vw, 24px); }
+.challenge-card.reverse-defense { border-color: rgba(145, 205, 93, .6); box-shadow: 0 22px 65px rgba(0, 0, 0, .55), 0 0 28px rgba(143, 219, 72, .14); }
+.reverse-defense .challenge-word { color: #e9ffc8; font-family: inherit; font-size: clamp(44px, 7vw, 66px); letter-spacing: .12em; text-shadow: 0 5px 20px rgba(143, 219, 72, .24); }
+.reverse-defense .quiz-shield { font-family: "Noto Serif TC", "PMingLiU", serif; font-size: clamp(32px, 5vw, 48px); }
 .quiz-shield {
   position: relative;
   isolation: isolate;
