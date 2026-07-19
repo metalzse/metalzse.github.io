@@ -15,7 +15,8 @@ const ENEMY_TYPES = [
   { type: "ember", baseName: "赤焰魔像", timedDefense: true },
   { type: "obsession", baseName: "執念魔像", timedDefense: false, highestWeightDefense: true },
   { type: "tone", baseName: "聲調魔像", timedDefense: false, toneDefense: true },
-  { type: "reverse", baseName: "字形魔像", timedDefense: false, reverseDefense: true }
+  { type: "reverse", baseName: "字形魔像", timedDefense: false, reverseDefense: true },
+  { type: "healer", baseName: "癒音魔像", timedDefense: false, healingAction: true }
 ];
 const BOSS_TYPE = { type: "boss", baseName: "符文魔王", timedDefense: false };
 const BOSS_SPAWN_CHANCE = 0.20;
@@ -28,6 +29,14 @@ const WEIGHT_EXPONENT_BASE = 3.5;
 const MIN_ANSWER_BALANCE = -4;
 const MAX_ANSWER_BALANCE = 4;
 const TONE_ANSWER_OPTIONS = ["1 聲", "2 聲", "3 聲", "4 聲", "˙"];
+const HEALING_SPELL_OPTION_COUNT = 6;
+const HEALING_SPELL_AMOUNT = 10;
+const ZHUYIN_COMPONENTS = [
+  "ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ", "ㄍ", "ㄎ", "ㄏ",
+  "ㄐ", "ㄑ", "ㄒ", "ㄓ", "ㄔ", "ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ",
+  "ㄧ", "ㄨ", "ㄩ", "ㄚ", "ㄛ", "ㄜ", "ㄝ", "ㄞ", "ㄟ", "ㄠ", "ㄡ",
+  "ㄢ", "ㄣ", "ㄤ", "ㄥ", "ㄦ", "1聲", "2聲", "3聲", "4聲", "˙"
+];
 let showWeightDebugInfo = false;
 
 function learnedCharacterNames() {
@@ -148,6 +157,7 @@ const elements = {
   timerFill: $("#timer-fill"),
   shieldOptions: $("#shield-options"),
   challengeFeedback: $("#challenge-feedback"),
+  spellConfirm: $("#spell-confirm"),
   correctionConfirm: $("#correction-confirm"),
   gameDebugLayout: $(".game-debug-layout"),
   weightDebugPanel: $(".weight-debug-panel"),
@@ -261,6 +271,22 @@ function toneAnswerFromZhuyin(zhuyin) {
 
 function zhuyinWithoutTone(zhuyin) {
   return zhuyin.replace(/[ˊˇˋ˙]/g, "");
+}
+
+function zhuyinComponents(zhuyin) {
+  const toneLabels = { "ˊ": "2聲", "ˇ": "3聲", "ˋ": "4聲", "˙": "˙" };
+  const components = [...zhuyin]
+    .filter(component => !/\s/u.test(component))
+    .map(component => toneLabels[component] || component);
+  if (!components.some(component => ["2聲", "3聲", "4聲", "˙"].includes(component))) components.push("1聲");
+  return components;
+}
+
+function sameComponents(first, second) {
+  if (first.length !== second.length) return false;
+  const sortedFirst = [...first].sort();
+  const sortedSecond = [...second].sort();
+  return sortedFirst.every((component, index) => component === sortedSecond[index]);
 }
 
 function baselineProbabilityForCharacter(character, candidateCharacters) {
@@ -447,6 +473,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const highestWeightQuiz = Boolean(enemy.highestWeightDefense);
   const toneQuiz = Boolean(enemy.toneDefense);
   const reverseQuiz = Boolean(enemy.reverseDefense);
+  const healingQuiz = Boolean(enemy.healingAction);
   const learnedCharacters = getLearnedCharacters();
   const usingFallback = !bossQuiz && learnedCharacters.length === 0;
   const candidates = bossQuiz
@@ -464,14 +491,20 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const selectionDebug = characterSelectionProbability(candidates, selectedEntry, highestWeightQuiz);
   const selectionMode = bossQuiz
     ? "魔王字庫"
-    : highestWeightQuiz ? "最高權重" : toneQuiz ? "聲調" : reverseQuiz ? "注音選字" : "一般加權";
+    : highestWeightQuiz ? "最高權重" : toneQuiz ? "聲調" : reverseQuiz ? "注音選字" : healingQuiz ? "治療組字" : "一般加權";
   lastQuizCharacter = character;
   const reverseDistractors = reverseQuiz
     ? candidates
       .filter(entry => entry.character !== character && entry.zhuyin !== pronunciation)
       .map(entry => entry.character)
     : [];
-  const answers = toneQuiz
+  const correctComponents = healingQuiz ? zhuyinComponents(pronunciation) : [];
+  const componentDistractors = healingQuiz
+    ? shuffle(ZHUYIN_COMPONENTS.filter(component => !correctComponents.includes(component)))
+    : [];
+  const answers = healingQuiz
+    ? shuffle([...correctComponents, ...componentDistractors.slice(0, Math.max(0, HEALING_SPELL_OPTION_COUNT - correctComponents.length))])
+    : toneQuiz
     ? [...TONE_ANSWER_OPTIONS]
     : reverseQuiz
       ? shuffle([
@@ -507,6 +540,10 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     highestWeightQuiz,
     toneQuiz,
     reverseQuiz,
+    healingQuiz,
+    correctComponents,
+    selectedComponents: [],
+    healAmount: healingQuiz ? HEALING_SPELL_AMOUNT : 0,
     bossWordCount: bossQuiz ? enemy.wordList.length : 0,
     usingFallback,
     resolved: false
@@ -537,7 +574,7 @@ function setMessage(title, detail, icon) {
 }
 
 function monsterMarkup(enemy) {
-  const rune = { boss: "王", obsession: "重", tone: "聲", reverse: "字" }[enemy.type] || "◇";
+  const rune = { boss: "王", obsession: "重", tone: "聲", reverse: "字", healer: "癒" }[enemy.type] || "◇";
   return `<div class="monster-stage sprite enemy-${enemy.type}" aria-label="${enemy.name}">
     <div class="monster">
       <div class="monster-horn horn-left"></div><div class="monster-horn horn-right"></div>
@@ -557,6 +594,7 @@ function renderEnemies() {
         ${enemy.highestWeightDefense ? '<span class="enemy-trait obsession-trait">鎖定最高權重</span>' : ""}
         ${enemy.toneDefense ? '<span class="enemy-trait tone-trait">聲調判定</span>' : ""}
         ${enemy.reverseDefense ? '<span class="enemy-trait reverse-trait">注音選字</span>' : ""}
+        ${enemy.healingAction ? '<span class="enemy-trait healer-trait">全體治療咒語</span>' : ""}
         ${enemy.type === "boss" ? `<span class="enemy-trait boss-trait">占 2 人・魔王字庫 ${enemy.wordList.length} 字</span>` : ""}
         <div class="meter"><div class="meter-fill enemy-hp"></div></div>
         <span class="enemy-hp-text"></span>
@@ -614,7 +652,7 @@ async function playerAttack() {
   }
 
   const livingCount = livingEnemyIndexes().length;
-  setMessage("敵人回合", `${livingCount} 名敵人準備攻擊…`, "◆");
+  setMessage("敵人回合", `${livingCount} 名敵人準備行動…`, "◆");
   await wait(650);
   startEnemyTurn();
 }
@@ -645,11 +683,13 @@ async function startEnemyAttack() {
   const enemy = state.enemies[enemyIndex];
   state.phase = "enemy-animation";
   setMessage(
-    totalStrikes === 2 ? `${enemy.name} 雙擊！` : `${enemy.name} 攻擊！`,
-    totalStrikes === 2 ? `第 ${strike} 次攻擊` : "注意敵人的動作",
-    "◆"
+    enemy.healingAction ? `${enemy.name} 詠唱！` : totalStrikes === 2 ? `${enemy.name} 雙擊！` : `${enemy.name} 攻擊！`,
+    enemy.healingAction ? "治療能量正在聚集" : totalStrikes === 2 ? `第 ${strike} 次攻擊` : "注意敵人的動作",
+    enemy.healingAction ? "✚" : "◆"
   );
-  const attackAnimation = enemy.type === "boss"
+  const attackAnimation = enemy.healingAction
+    ? "healer-cast"
+    : enemy.type === "boss"
     ? "boss-attack"
     : totalStrikes === 2
       ? (strike === 1 ? "double-strike-one" : "double-strike-two")
@@ -660,19 +700,21 @@ async function startEnemyAttack() {
   await wait(600);
   if (state.phase !== "enemy-animation" || state.finished) return;
 
-  const damage = randomEnemyDamage();
+  const damage = enemy.healingAction ? 0 : randomEnemyDamage();
   state.phase = "defense";
   state.quiz = createQuiz(damage, enemyIndex, strike, totalStrikes);
   const debug = state.quiz;
   const exclusionDebug = debug.excludedLastCharacter ? `排除上一題「${debug.excludedLastCharacter}」` : "未排除上一題";
   addLog(`【權重除錯】${enemy.name}／${debug.selectionMode}｜抽中「${debug.character}」 ${debug.weight.toFixed(2)}×／${(debug.selectionProbability * 100).toFixed(2)}%｜候選 ${debug.candidateCount}→實際池 ${debug.eligibleCandidateCount}｜已學儲存 ${debug.rawLearnedCount}／有效注音 ${debug.validLearnedCount}｜${exclusionDebug}`, "weight-debug-log");
-  const defenseTitle = totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定";
-  const defenseInstruction = enemy.timedDefense
+  const defenseTitle = enemy.healingAction ? "破解治療咒語" : totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定";
+  const defenseInstruction = enemy.healingAction
+    ? "選出完整注音與聲調，再按確認！"
+    : enemy.timedDefense
     ? "10 秒內選出正確注音！"
     : enemy.toneDefense
       ? "選出正確聲調擋下攻擊！"
       : enemy.reverseDefense ? "選出正確中文字擋下攻擊！" : "選出正確注音擋下攻擊！";
-  setMessage(defenseTitle, defenseInstruction, "⬟");
+  setMessage(defenseTitle, defenseInstruction, enemy.healingAction ? "✚" : "⬟");
   showDefenseChallenge();
   updateUI();
 }
@@ -687,13 +729,17 @@ function showDefenseChallenge() {
         ? (quiz.usingFallback ? "聲調判定・試玩字" : "聲調判定・已學會的字")
       : quiz.reverseQuiz
         ? (quiz.usingFallback ? "注音選字・試玩字" : "注音選字・已學會的字")
+      : quiz.healingQuiz
+        ? (quiz.usingFallback ? "治療咒語・試玩字" : "治療咒語・已學會的字")
       : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
   const challengeSourceBase = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}`;
   const weightDebugLabel = showWeightDebugInfo ? `・權重 ${quiz.weight.toFixed(2)}×` : "";
   elements.challengeSource.dataset.baseText = challengeSourceBase;
   elements.challengeSource.textContent = `${challengeSourceBase}${weightDebugLabel}`;
-  elements.challengeTitle.textContent = quiz.toneQuiz
+  elements.challengeTitle.textContent = quiz.healingQuiz
+    ? "選出這個字的完整注音與聲調！"
+    : quiz.toneQuiz
     ? "選出正確的聲調，擋下攻擊！"
     : quiz.reverseQuiz ? "選出符合注音的中文字，擋下攻擊！" : "選出正確的注音，擋下攻擊！";
   elements.challengeWord.textContent = quiz.reverseQuiz ? quiz.pronunciation : quiz.character;
@@ -702,16 +748,23 @@ function showDefenseChallenge() {
     : quiz.reverseQuiz ? `題目注音 ${quiz.pronunciation}` : `題目 ${quiz.character}`);
   elements.challengePronunciation.textContent = quiz.promptPronunciation;
   elements.challengePronunciation.hidden = !quiz.toneQuiz;
-  elements.challengeFeedback.textContent = `選對就能擋下 ${quiz.damage} 點傷害`;
+  elements.challengeFeedback.textContent = quiz.healingQuiz
+    ? "可複選注音元件，選好後按確認組合"
+    : `選對就能擋下 ${quiz.damage} 點傷害`;
   elements.challengeFeedback.className = "challenge-feedback";
   elements.correctionConfirm.hidden = true;
+  elements.spellConfirm.hidden = !quiz.healingQuiz;
+  elements.spellConfirm.disabled = quiz.healingQuiz;
   elements.challengeCard.classList.toggle("timed-defense", quiz.timedDefense);
   elements.challengeCard.classList.toggle("tone-defense", quiz.toneQuiz);
   elements.challengeCard.classList.toggle("reverse-defense", quiz.reverseQuiz);
+  elements.challengeCard.classList.toggle("healing-spell", quiz.healingQuiz);
   elements.challengeCard.classList.remove("timed-out");
   elements.challengeTimer.hidden = !quiz.timedDefense;
   elements.shieldOptions.innerHTML = "";
-  elements.shieldOptions.setAttribute("aria-label", quiz.toneQuiz
+  elements.shieldOptions.setAttribute("aria-label", quiz.healingQuiz
+    ? "選擇完整的注音與聲調"
+    : quiz.toneQuiz
     ? "選擇正確的聲調"
     : quiz.reverseQuiz ? "選擇正確的中文字" : "選擇正確的注音");
 
@@ -720,16 +773,78 @@ function showDefenseChallenge() {
     button.type = "button";
     button.className = "quiz-shield";
     button.dataset.answer = answer;
+    button.setAttribute("aria-pressed", "false");
     const label = document.createElement("span");
     label.textContent = answer;
     button.appendChild(label);
-    button.setAttribute("aria-label", `盾牌 ${answer}`);
+    button.setAttribute("aria-label", `${quiz.healingQuiz ? "注音元件" : "盾牌"} ${answer}`);
     elements.shieldOptions.appendChild(button);
   });
 
   elements.challenge.hidden = false;
   if (quiz.timedDefense) startDefenseTimer();
   elements.shieldOptions.querySelector("button").focus();
+}
+
+function toggleHealingComponent(button) {
+  const quiz = state.quiz;
+  if (state.phase !== "defense" || !quiz?.healingQuiz || quiz.resolved) return;
+  const component = button.dataset.answer;
+  const selected = button.getAttribute("aria-pressed") === "true";
+  button.setAttribute("aria-pressed", String(!selected));
+  button.classList.toggle("selected", !selected);
+  quiz.selectedComponents = [...elements.shieldOptions.querySelectorAll('[aria-pressed="true"]')]
+    .map(option => option.dataset.answer);
+  elements.spellConfirm.disabled = quiz.selectedComponents.length === 0;
+  elements.challengeFeedback.textContent = quiz.selectedComponents.length
+    ? `已選：${quiz.selectedComponents.join(" ")}`
+    : "可複選注音元件，選好後按確認組合";
+}
+
+function healLivingEnemies(amount) {
+  const healed = [];
+  livingEnemyIndexes().forEach(index => {
+    const enemy = state.enemies[index];
+    const recovered = Math.min(amount, enemy.maxHp - enemy.hp);
+    enemy.hp += recovered;
+    if (recovered > 0) healed.push(`${enemy.name} +${recovered}`);
+    animate(enemyStage(index), "heal-received");
+  });
+  updateUI();
+  return healed;
+}
+
+async function resolveHealingSpell() {
+  const quiz = state.quiz;
+  if (state.phase !== "defense" || !quiz?.healingQuiz || quiz.resolved) return;
+  quiz.resolved = true;
+  const correct = sameComponents(quiz.selectedComponents, quiz.correctComponents);
+  const weightChange = recordQuizResult(quiz.character, correct, quiz.candidateCharacters);
+  const buttons = [...elements.shieldOptions.querySelectorAll("button")];
+  buttons.forEach(button => {
+    button.disabled = true;
+    if (quiz.correctComponents.includes(button.dataset.answer)) button.classList.add("correct");
+    if (button.classList.contains("selected") && !quiz.correctComponents.includes(button.dataset.answer)) button.classList.add("wrong");
+  });
+  elements.spellConfirm.hidden = true;
+
+  if (correct) {
+    elements.challengeFeedback.textContent = `破解成功！${quiz.correctComponents.join(" ")} 組成 ${quiz.pronunciation}，治療咒語失效。`;
+    elements.challengeFeedback.classList.add("success");
+    addLog(`答對了！成功拼出「${quiz.character}」的注音 ${quiz.pronunciation}，${state.enemies[quiz.enemyIndex].name} 的治療咒語失效。`);
+    addWeightChangeLog(quiz.character, true, weightChange);
+    await wait(950);
+    completeDefense(true);
+    return;
+  }
+
+  state.phase = "correction";
+  elements.challengeFeedback.textContent = `組合不正確。「${quiz.character}」需要 ${quiz.correctComponents.join(" ")}（${quiz.pronunciation}）。確認後治療咒語將會生效。`;
+  elements.challengeFeedback.classList.add("failure");
+  elements.correctionConfirm.hidden = false;
+  elements.correctionConfirm.focus();
+  addLog(`請確認：「${quiz.character}」的完整注音是 ${quiz.pronunciation}。`);
+  addWeightChangeLog(quiz.character, false, weightChange);
 }
 
 function clearDefenseTimer() {
@@ -841,18 +956,31 @@ async function resolveDefense(selectedAnswer) {
   }
 }
 
-function completeDefense(blocked) {
+async function completeDefense(blocked) {
   const quiz = state.quiz;
   if (!quiz || state.finished) return;
   clearDefenseTimer();
   elements.correctionConfirm.hidden = true;
+  elements.spellConfirm.hidden = true;
   elements.challenge.hidden = true;
 
-  if (!blocked) {
+  if (!blocked && !quiz.healingQuiz) {
     state.player.hp = Math.max(0, state.player.hp - quiz.damage);
     animate(elements.heroSprite, "hit");
     addLog(`主角受到 ${quiz.damage} 點傷害。`);
     updateUI();
+  }
+
+  if (!blocked && quiz.healingQuiz) {
+    state.phase = "enemy-animation";
+    setMessage("治療咒語生效！", "所有存活敵人正在恢復生命", "✚");
+    // 題目遮罩先關閉，再開始播放戰場上的治療效果。
+    await wait(120);
+    if (state.finished || state.quiz !== quiz) return;
+    const healed = healLivingEnemies(quiz.healAmount);
+    addLog(`${state.enemies[quiz.enemyIndex].name} 的治療咒語成功！${healed.length ? healed.join("、") : "所有敵人生命皆已全滿"}。`);
+    await wait(700);
+    if (state.finished || state.quiz !== quiz) return;
   }
 
   if (state.player.hp === 0) {
@@ -900,6 +1028,7 @@ function endBattle(victory) {
   state.finished = true;
   state.phase = "finished";
   elements.challenge.hidden = true;
+  elements.spellConfirm.hidden = true;
   updateUI();
   $("#result-eyebrow").textContent = victory ? "戰鬥結束" : "挑戰失敗";
   $("#result-title").textContent = victory ? "勝利！" : "戰敗…";
@@ -920,6 +1049,7 @@ function restart() {
   elements.log.innerHTML = "";
   elements.overlay.hidden = true;
   elements.challenge.hidden = true;
+  elements.spellConfirm.hidden = true;
   renderEnemies();
   addLog(battleStartMessage());
   setMessage("輪到你了", "按下攻擊開始戰鬥", "⚔");
@@ -930,8 +1060,11 @@ function restart() {
 elements.attackButton.addEventListener("click", playerAttack);
 elements.shieldOptions.addEventListener("click", (event) => {
   const shield = event.target.closest("[data-answer]");
-  if (shield) resolveDefense(shield.dataset.answer);
+  if (!shield) return;
+  if (state.quiz?.healingQuiz) toggleHealingComponent(shield);
+  else resolveDefense(shield.dataset.answer);
 });
+elements.spellConfirm.addEventListener("click", resolveHealingSpell);
 elements.correctionConfirm.addEventListener("click", () => {
   if (state.phase === "correction") completeDefense(false);
 });
