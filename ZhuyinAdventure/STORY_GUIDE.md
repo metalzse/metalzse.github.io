@@ -11,6 +11,8 @@
 
 如果需要修改首頁首次顯示的遊戲規則說明，請改 `game-info.js`，不要放在 `story.js`。
 
+資料夾中的 `story_airport.js`、`story_dino.js`、`story_space.js` 是歷史/備用故事檔，目前不會自動載入。保留它們是為了保存舊故事，並方便之後加入「選擇故事」功能時使用。
+
 `story.js` 必須定義一個全域的 `STORY` 物件。因為 `story.js` 會先於 `engine.js` 載入，建議在檔案最上方保留這行：
 
 ```js
