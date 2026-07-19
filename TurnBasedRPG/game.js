@@ -13,7 +13,8 @@ const FALLBACK_ZHUYIN = {
 const ENEMY_TYPES = [
   { type: "moss", baseName: "苔岩巨像", timedDefense: false },
   { type: "ember", baseName: "赤焰魔像", timedDefense: true },
-  { type: "obsession", baseName: "執念魔像", timedDefense: false, highestWeightDefense: true }
+  { type: "obsession", baseName: "執念魔像", timedDefense: false, highestWeightDefense: true },
+  { type: "tone", baseName: "聲調魔像", timedDefense: false, toneDefense: true }
 ];
 const BOSS_TYPE = { type: "boss", baseName: "符文魔王", timedDefense: false };
 const BOSS_SPAWN_CHANCE = 0.20;
@@ -26,6 +27,7 @@ const WRONG_WEIGHT_BASE = 2.15;
 const CORRECT_WEIGHT_BASE = 0.72;
 const MIN_CHARACTER_WEIGHT = 0.16;
 const MAX_CHARACTER_WEIGHT = 30;
+const TONE_ANSWER_OPTIONS = ["1 聲", "2 聲", "3 聲", "4 聲", "˙"];
 
 function learnedCharacterNames() {
   try {
@@ -114,7 +116,9 @@ const elements = {
   challenge: $("#defense-challenge"),
   challengeCard: $(".challenge-card"),
   challengeSource: $("#challenge-source"),
+  challengeTitle: $("#challenge-title"),
   challengeWord: $("#challenge-word"),
+  challengePronunciation: $("#challenge-pronunciation"),
   challengeTimer: $("#challenge-timer"),
   timerValue: $("#timer-value"),
   timerFill: $("#timer-fill"),
@@ -184,6 +188,18 @@ function highestWeightedCharacterPick(candidates) {
   const weightedCandidates = candidates.map(entry => ({ ...entry, weight: characterWeight(entry.character) }));
   const highestWeight = Math.max(...weightedCandidates.map(entry => entry.weight));
   return randomItem(weightedCandidates.filter(entry => entry.weight === highestWeight));
+}
+
+function toneAnswerFromZhuyin(zhuyin) {
+  if (zhuyin.includes("˙")) return "˙";
+  if (zhuyin.includes("ˊ")) return "2 聲";
+  if (zhuyin.includes("ˇ")) return "3 聲";
+  if (zhuyin.includes("ˋ")) return "4 聲";
+  return "1 聲";
+}
+
+function zhuyinWithoutTone(zhuyin) {
+  return zhuyin.replace(/[ˊˇˋ˙]/g, "");
 }
 
 function recordQuizResult(character, correct) {
@@ -279,6 +295,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
   const enemy = state.enemies[enemyIndex];
   const bossQuiz = enemy.type === "boss";
   const highestWeightQuiz = Boolean(enemy.highestWeightDefense);
+  const toneQuiz = Boolean(enemy.toneDefense);
   const learnedCharacters = getLearnedCharacters();
   const usingFallback = !bossQuiz && learnedCharacters.length === 0;
   const candidates = bossQuiz
@@ -290,16 +307,24 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     ? highestWeightedCharacterPick(candidates)
     : weightedCharacterPick(candidates);
   const character = selectedEntry.character;
-  const correctAnswer = selectedEntry.zhuyin;
+  const pronunciation = selectedEntry.zhuyin;
+  const promptPronunciation = toneQuiz ? zhuyinWithoutTone(pronunciation) : pronunciation;
+  const correctAnswer = toneQuiz ? toneAnswerFromZhuyin(pronunciation) : pronunciation;
   lastQuizCharacter = character;
-  const wrongAnswerPool = [...new Set(Object.values(zhuyinMap))].filter((answer) => answer !== correctAnswer);
-  const wrongAnswers = shuffle(wrongAnswerPool).slice(0, 2);
+  const answers = toneQuiz
+    ? [...TONE_ANSWER_OPTIONS]
+    : shuffle([
+        correctAnswer,
+        ...shuffle([...new Set(Object.values(zhuyinMap))].filter(answer => answer !== correctAnswer)).slice(0, 2)
+      ]);
 
   return {
     character,
+    pronunciation,
+    promptPronunciation,
     correctAnswer,
     weight: selectedEntry.weight,
-    answers: shuffle([correctAnswer, ...wrongAnswers]),
+    answers,
     damage,
     enemyIndex,
     strike,
@@ -307,6 +332,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     timedDefense: state.enemies[enemyIndex].timedDefense,
     bossQuiz,
     highestWeightQuiz,
+    toneQuiz,
     bossWordCount: bossQuiz ? enemy.wordList.length : 0,
     usingFallback,
     resolved: false
@@ -337,7 +363,7 @@ function setMessage(title, detail, icon) {
 }
 
 function monsterMarkup(enemy) {
-  const rune = enemy.type === "boss" ? "王" : enemy.type === "obsession" ? "重" : "◇";
+  const rune = enemy.type === "boss" ? "王" : enemy.type === "obsession" ? "重" : enemy.type === "tone" ? "聲" : "◇";
   return `<div class="monster-stage sprite enemy-${enemy.type}" aria-label="${enemy.name}">
     <div class="monster">
       <div class="monster-horn horn-left"></div><div class="monster-horn horn-right"></div>
@@ -355,6 +381,7 @@ function renderEnemies() {
         <strong>${enemy.name}</strong>
         ${enemy.timedDefense ? '<span class="enemy-trait">10 秒限時</span>' : ""}
         ${enemy.highestWeightDefense ? '<span class="enemy-trait obsession-trait">鎖定最高權重</span>' : ""}
+        ${enemy.toneDefense ? '<span class="enemy-trait tone-trait">聲調判定</span>' : ""}
         ${enemy.type === "boss" ? `<span class="enemy-trait boss-trait">占 2 人・魔王字庫 ${enemy.wordList.length} 字</span>` : ""}
         <div class="meter"><div class="meter-fill enemy-hp"></div></div>
         <span class="enemy-hp-text"></span>
@@ -462,7 +489,10 @@ async function startEnemyAttack() {
   state.phase = "defense";
   state.quiz = createQuiz(damage, enemyIndex, strike, totalStrikes);
   const defenseTitle = totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定";
-  setMessage(defenseTitle, enemy.timedDefense ? "10 秒內選出正確注音！" : "選出正確注音擋下攻擊！", "⬟");
+  const defenseInstruction = enemy.timedDefense
+    ? "10 秒內選出正確注音！"
+    : enemy.toneDefense ? "選出正確聲調擋下攻擊！" : "選出正確注音擋下攻擊！";
+  setMessage(defenseTitle, defenseInstruction, "⬟");
   showDefenseChallenge();
   updateUI();
 }
@@ -473,17 +503,25 @@ function showDefenseChallenge() {
     ? `魔王獨立字庫 ${quiz.bossWordCount} 字`
     : quiz.highestWeightQuiz
       ? "目前最高權重字"
+      : quiz.toneQuiz
+        ? (quiz.usingFallback ? "聲調判定・試玩字" : "聲調判定・已學會的字")
       : quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
   const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
   elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}・權重 ${quiz.weight.toFixed(2)}×`;
+  elements.challengeTitle.textContent = quiz.toneQuiz ? "選出正確的聲調，擋下攻擊！" : "選出正確的注音，擋下攻擊！";
   elements.challengeWord.textContent = quiz.character;
+  elements.challengeWord.setAttribute("aria-label", quiz.toneQuiz ? `題目 ${quiz.character}，無聲調注音 ${quiz.promptPronunciation}` : `題目 ${quiz.character}`);
+  elements.challengePronunciation.textContent = quiz.promptPronunciation;
+  elements.challengePronunciation.hidden = !quiz.toneQuiz;
   elements.challengeFeedback.textContent = `選對就能擋下 ${quiz.damage} 點傷害`;
   elements.challengeFeedback.className = "challenge-feedback";
   elements.correctionConfirm.hidden = true;
   elements.challengeCard.classList.toggle("timed-defense", quiz.timedDefense);
+  elements.challengeCard.classList.toggle("tone-defense", quiz.toneQuiz);
   elements.challengeCard.classList.remove("timed-out");
   elements.challengeTimer.hidden = !quiz.timedDefense;
   elements.shieldOptions.innerHTML = "";
+  elements.shieldOptions.setAttribute("aria-label", quiz.toneQuiz ? "選擇正確的聲調" : "選擇正確的注音");
 
   quiz.answers.forEach((answer) => {
     const button = document.createElement("button");
@@ -583,16 +621,22 @@ async function resolveDefense(selectedAnswer) {
       ? `正確！成功防守，魔王字庫增加到 ${state.enemies[quiz.enemyIndex].wordList.length} 字！`
       : "正確！盾牌擋下了攻擊！";
     elements.challengeFeedback.classList.add("success");
-    addLog(`答對了！「${quiz.character}」的注音是 ${quiz.correctAnswer}，成功擋下攻擊。`);
+    addLog(quiz.toneQuiz
+      ? `答對了！「${quiz.character}」讀作 ${quiz.pronunciation}，是 ${quiz.correctAnswer}，成功擋下攻擊。`
+      : `答對了！「${quiz.character}」的注音是 ${quiz.correctAnswer}，成功擋下攻擊。`);
     await wait(850);
     completeDefense(true);
   } else {
     state.phase = "correction";
-    elements.challengeFeedback.textContent = `再看一次：「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
+    elements.challengeFeedback.textContent = quiz.toneQuiz
+      ? `再看一次：「${quiz.character}」讀作 ${quiz.pronunciation}，正確答案是 ${quiz.correctAnswer}`
+      : `再看一次：「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
     elements.challengeFeedback.classList.add("failure");
     elements.correctionConfirm.hidden = false;
     elements.correctionConfirm.focus();
-    addLog(`答錯了，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
+    addLog(quiz.toneQuiz
+      ? `答錯了，請確認「${quiz.character}」讀作 ${quiz.pronunciation}，是 ${quiz.correctAnswer}。`
+      : `答錯了，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
   }
 }
 
