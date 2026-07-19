@@ -1,6 +1,6 @@
 const stateKey = `adventure-progress:${STORY.id}`;
 const inventoryKey = `adventure-inventory:${STORY.id}`;
-const learnedCharactersKey = "adventure-learned-characters";
+const sharedLearnedCharactersKey = "adventure-learned-characters";
 const readingDifficultyKey = "adventure-reading-difficulty";
 const gameInfoSeenKey = "adventure-game-info-version";
 const readingDifficulties = ["easy", "practice", "challenge"];
@@ -51,14 +51,14 @@ function charactersInText(text) {
 
 function getLearnedCharacters() {
   try {
-    return JSON.parse(localStorage.getItem(learnedCharactersKey) || "[]");
+    return JSON.parse(localStorage.getItem(sharedLearnedCharactersKey) || "[]");
   } catch {
     return [];
   }
 }
 
 function setLearnedCharacters(characters) {
-  localStorage.setItem(learnedCharactersKey, JSON.stringify([...new Set(characters)]));
+  localStorage.setItem(sharedLearnedCharactersKey, JSON.stringify([...new Set(characters)]));
 }
 
 function hasLearnedCharacters(text) {
