@@ -47,6 +47,10 @@
           <p class="challenge-kicker" id="challenge-source">已學會的字</p>
           <h2 id="challenge-title">選出正確的注音，擋下攻擊！</h2>
           <div class="challenge-word" id="challenge-word" aria-label="題目"></div>
+          <div class="challenge-timer" id="challenge-timer" aria-live="polite" hidden>
+            <div class="timer-label"><span>限時防禦</span><strong><span id="timer-value">10</span> 秒</strong></div>
+            <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+          </div>
           <div class="shield-options" id="shield-options" role="group" aria-label="選擇正確的注音"></div>
           <p class="challenge-feedback" id="challenge-feedback" aria-live="assertive">選擇一面盾牌</p>
           <button class="correction-confirm" id="correction-confirm" type="button" hidden>我知道了，繼續</button>

@@ -9,15 +9,24 @@ const FALLBACK_ZHUYIN = {
   "門": "ㄇㄣˊ", "手": "ㄕㄡˇ", "飛": "ㄈㄟ", "走": "ㄗㄡˇ", "來": "ㄌㄞˊ",
   "去": "ㄑㄩˋ", "看": "ㄎㄢˋ", "學": "ㄒㄩㄝˊ", "字": "ㄗˋ", "好": "ㄏㄠˇ"
 };
+const ENEMY_TYPES = [
+  { type: "moss", baseName: "苔岩巨像", timedDefense: false },
+  { type: "ember", baseName: "赤焰魔像", timedDefense: true }
+];
+const TIMED_DEFENSE_SECONDS = 10;
 
 function createEnemies() {
   const count = Math.floor(Math.random() * 3) + 1;
   const maxHp = 120;
-  return Array.from({ length: count }, (_, index) => ({
-    name: count === 1 ? "苔岩巨像" : `苔岩巨像 ${index + 1}`,
-    hp: maxHp,
-    maxHp
-  }));
+  return Array.from({ length: count }, (_, index) => {
+    const enemyType = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+    return {
+      ...enemyType,
+      name: count === 1 ? enemyType.baseName : `${enemyType.baseName} ${index + 1}`,
+      hp: maxHp,
+      maxHp
+    };
+  });
 }
 
 const createState = () => ({
@@ -32,6 +41,8 @@ const createState = () => ({
 
 let state = createState();
 let pendingTimer;
+let defenseTimerInterval;
+let defenseTimerDeadline = 0;
 let zhuyinMap = { ...FALLBACK_ZHUYIN, ...(window.ZHUYIN_CHARACTER_MAP || {}) };
 
 const $ = (selector) => document.querySelector(selector);
@@ -46,8 +57,12 @@ const elements = {
   overlay: $("#result-overlay"),
   heroSprite: $(".hero"),
   challenge: $("#defense-challenge"),
+  challengeCard: $(".challenge-card"),
   challengeSource: $("#challenge-source"),
   challengeWord: $("#challenge-word"),
+  challengeTimer: $("#challenge-timer"),
+  timerValue: $("#timer-value"),
+  timerFill: $("#timer-fill"),
   shieldOptions: $("#shield-options"),
   challengeFeedback: $("#challenge-feedback"),
   correctionConfirm: $("#correction-confirm")
@@ -160,6 +175,7 @@ function createQuiz(damage, enemyIndex, strike = 1, totalStrikes = 1) {
     enemyIndex,
     strike,
     totalStrikes,
+    timedDefense: state.enemies[enemyIndex].timedDefense,
     usingFallback,
     resolved: false
   };
@@ -183,8 +199,8 @@ function setMessage(title, detail, icon) {
   elements.message.innerHTML = `<span class="message-icon" aria-hidden="true">${icon}</span><p><strong>${title}</strong><span>${detail}</span></p>`;
 }
 
-function monsterMarkup(name) {
-  return `<div class="monster-stage sprite" aria-label="${name}">
+function monsterMarkup(enemy) {
+  return `<div class="monster-stage sprite enemy-${enemy.type}" aria-label="${enemy.name}">
     <div class="monster">
       <div class="monster-horn horn-left"></div><div class="monster-horn horn-right"></div>
       <div class="monster-head"><span class="eye left-eye"></span><span class="eye right-eye"></span></div>
@@ -196,13 +212,14 @@ function monsterMarkup(name) {
 
 function renderEnemies() {
   elements.enemyParty.innerHTML = state.enemies.map((enemy, index) => `
-    <section class="enemy-unit" data-enemy-index="${index}" aria-label="${enemy.name}">
+    <section class="enemy-unit enemy-unit-${enemy.type}" data-enemy-index="${index}" aria-label="${enemy.name}">
       <div class="enemy-nameplate">
         <strong>${enemy.name}</strong>
+        ${enemy.timedDefense ? '<span class="enemy-trait">10 秒限時</span>' : ""}
         <div class="meter"><div class="meter-fill enemy-hp"></div></div>
         <span class="enemy-hp-text"></span>
       </div>
-      ${monsterMarkup(enemy.name)}
+      ${monsterMarkup(enemy)}
     </section>
   `).join("");
 }
@@ -258,7 +275,8 @@ async function playerAttack() {
 
 function startEnemyTurn() {
   state.enemyQueue = livingEnemyIndexes().flatMap((enemyIndex) => {
-    const doubleStrike = Math.random() < 0.15;
+    const enemy = state.enemies[enemyIndex];
+    const doubleStrike = !enemy.timedDefense && Math.random() < 0.15;
     if (!doubleStrike) return [{ enemyIndex, strike: 1, totalStrikes: 1 }];
 
     addLog(`${state.enemies[enemyIndex].name} 使出雙擊！`);
@@ -297,7 +315,8 @@ async function startEnemyAttack() {
   const damage = randomEnemyDamage();
   state.phase = "defense";
   state.quiz = createQuiz(damage, enemyIndex, strike, totalStrikes);
-  setMessage(totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定", "選出正確注音擋下攻擊！", "⬟");
+  const defenseTitle = totalStrikes === 2 ? `雙擊防禦 ${strike} / 2` : "防禦判定";
+  setMessage(defenseTitle, enemy.timedDefense ? "10 秒內選出正確注音！" : "選出正確注音擋下攻擊！", "⬟");
   showDefenseChallenge();
   updateUI();
 }
@@ -305,11 +324,15 @@ async function startEnemyAttack() {
 function showDefenseChallenge() {
   const quiz = state.quiz;
   const source = quiz.usingFallback ? "尚無已學會的字・使用試玩字" : "已學會的字";
-  elements.challengeSource.textContent = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・${source}` : source;
+  const strikeLabel = quiz.totalStrikes === 2 ? `雙擊防禦 ${quiz.strike} / 2・` : "";
+  elements.challengeSource.textContent = `${strikeLabel}${quiz.timedDefense ? "10 秒限時・" : ""}${source}`;
   elements.challengeWord.textContent = quiz.character;
   elements.challengeFeedback.textContent = `選對就能擋下 ${quiz.damage} 點傷害`;
   elements.challengeFeedback.className = "challenge-feedback";
   elements.correctionConfirm.hidden = true;
+  elements.challengeCard.classList.toggle("timed-defense", quiz.timedDefense);
+  elements.challengeCard.classList.remove("timed-out");
+  elements.challengeTimer.hidden = !quiz.timedDefense;
   elements.shieldOptions.innerHTML = "";
 
   quiz.answers.forEach((answer) => {
@@ -325,13 +348,58 @@ function showDefenseChallenge() {
   });
 
   elements.challenge.hidden = false;
+  if (quiz.timedDefense) startDefenseTimer();
   elements.shieldOptions.querySelector("button").focus();
+}
+
+function clearDefenseTimer() {
+  window.clearInterval(defenseTimerInterval);
+  defenseTimerInterval = undefined;
+  defenseTimerDeadline = 0;
+}
+
+function startDefenseTimer() {
+  clearDefenseTimer();
+  defenseTimerDeadline = Date.now() + TIMED_DEFENSE_SECONDS * 1000;
+
+  const updateTimer = () => {
+    const remaining = Math.max(0, defenseTimerDeadline - Date.now());
+    elements.timerValue.textContent = Math.ceil(remaining / 1000);
+    elements.timerFill.style.width = `${remaining / (TIMED_DEFENSE_SECONDS * 1000) * 100}%`;
+    if (remaining <= 0) handleDefenseTimeout();
+  };
+
+  updateTimer();
+  defenseTimerInterval = window.setInterval(updateTimer, 100);
+}
+
+function revealCorrectAnswer() {
+  elements.shieldOptions.querySelectorAll("button").forEach(button => {
+    button.disabled = true;
+    if (button.dataset.answer === state.quiz.correctAnswer) button.classList.add("correct");
+  });
+}
+
+function handleDefenseTimeout() {
+  const quiz = state.quiz;
+  if (state.phase !== "defense" || !quiz?.timedDefense || quiz.resolved) return;
+  quiz.resolved = true;
+  state.phase = "correction";
+  clearDefenseTimer();
+  revealCorrectAnswer();
+  elements.challengeCard.classList.add("timed-out");
+  elements.challengeFeedback.textContent = `時間到！「${quiz.character}」的正確注音是 ${quiz.correctAnswer}`;
+  elements.challengeFeedback.classList.add("failure");
+  elements.correctionConfirm.hidden = false;
+  elements.correctionConfirm.focus();
+  addLog(`時間到，請確認「${quiz.character}」的正確注音：${quiz.correctAnswer}。`);
 }
 
 async function resolveDefense(selectedAnswer) {
   const quiz = state.quiz;
   if (state.phase !== "defense" || !quiz || quiz.resolved) return;
   quiz.resolved = true;
+  clearDefenseTimer();
   const blocked = selectedAnswer === quiz.correctAnswer;
   const buttons = [...elements.shieldOptions.querySelectorAll("button")];
 
@@ -360,6 +428,7 @@ async function resolveDefense(selectedAnswer) {
 function completeDefense(blocked) {
   const quiz = state.quiz;
   if (!quiz || state.finished) return;
+  clearDefenseTimer();
   elements.correctionConfirm.hidden = true;
   elements.challenge.hidden = true;
 
@@ -411,6 +480,7 @@ function finishEnemyTurn(blocked) {
 }
 
 function endBattle(victory) {
+  clearDefenseTimer();
   state.finished = true;
   state.phase = "finished";
   elements.challenge.hidden = true;
@@ -429,6 +499,7 @@ function endBattle(victory) {
 
 function restart() {
   window.clearTimeout(pendingTimer);
+  clearDefenseTimer();
   state = createState();
   elements.log.innerHTML = "";
   elements.overlay.hidden = true;
