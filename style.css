@@ -87,6 +87,17 @@ rt {
   outline: 6px solid rgba(60, 120, 180, .25);
 }
 
+.danger-entry {
+  border-color: #d2a19c;
+  background: #fff0ed;
+  color: #74302b;
+}
+
+.danger-entry:hover,
+.danger-entry:focus {
+  outline-color: rgba(165, 58, 58, .22);
+}
+
 .game-entry-icon {
   flex: 0 0 82px;
   font-size: 64px;

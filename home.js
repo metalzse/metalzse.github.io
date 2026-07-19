@@ -1,4 +1,9 @@
 const sharedLearnedCharactersKey = "adventure-learned-characters";
+const flashcardStateKey = "zhuyin-flashcard-state-v1";
+const adventureRecordPrefixes = [
+  "adventure-progress:",
+  "adventure-inventory:"
+];
 
 function isChineseText(text) {
   return /[\u3400-\u9fff\uf900-\ufaff]/u.test(text);
@@ -68,4 +73,24 @@ function importLearnedCharacters() {
   input.click();
 }
 
+function clearCurrentRecords() {
+  const shouldClear = window.confirm(
+    "確定要清除目前記錄嗎？\n\n這會清除共用學會字庫、注音冒險進度與背包、注音練習卡統計。"
+  );
+
+  if (!shouldClear) return;
+
+  localStorage.removeItem(sharedLearnedCharactersKey);
+  localStorage.removeItem(flashcardStateKey);
+
+  Object.keys(localStorage).forEach(key => {
+    if (adventureRecordPrefixes.some(prefix => key.startsWith(prefix))) {
+      localStorage.removeItem(key);
+    }
+  });
+
+  window.alert("目前記錄已清除。");
+}
+
 document.getElementById("import-learned").addEventListener("click", importLearnedCharacters);
+document.getElementById("clear-records").addEventListener("click", clearCurrentRecords);
