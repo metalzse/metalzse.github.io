@@ -202,11 +202,22 @@ function renderInventory() {
   if (!items.length) {
     return `<p class="small">${renderTokens(label("emptyBag"))}</p>`;
   }
-  return `<p class="small">${items.map(id => renderTokens(STORY.items[id]?.name || [id])).join("　")}</p>`;
+  return `<p class="small">${items.map(id => renderTokens(itemName(id))).join("　")}</p>`;
 }
 
 function doorIsLocked(door) {
   return door.requires && !hasItem(door.requires);
+}
+
+function itemName(itemId) {
+  const item = STORY.items?.[itemId];
+  if (Array.isArray(item)) return item;
+  return item?.name || [itemId];
+}
+
+function renderRoomTitle(room) {
+  const icon = room.icon ? `${escapeHtml(room.icon)} ` : "";
+  return `${icon}${renderTokens(room.title)}`;
 }
 
 function scrollToTop() {
@@ -374,7 +385,7 @@ function renderRoom(roomId) {
   }
 
   const itemNote = room.givesItem && STORY.items ? `
-    <p class="item-note">🎒 ${renderTokens(label("gotItem"))} ${renderTokens(STORY.items[room.givesItem].name)}</p>
+    <p class="item-note">🎒 ${renderTokens(label("gotItem"))} ${renderTokens(itemName(room.givesItem))}</p>
   ` : "";
 
   const doors = (room.doors || []).map(door => {
@@ -413,10 +424,10 @@ function renderRoom(roomId) {
     <header class="page-header">
       ${renderDifficultyControls()}
     </header>
-    <h1>${renderTokens(room.title)}</h1>
+    <h1>${renderRoomTitle(room)}</h1>
     ${goalBox}
     <section class="content-box description-box">
-      <h2>${renderTokens(room.title)}：</h2>
+      <h2>${renderRoomTitle(room)}：</h2>
       ${room.description.map(p => `<p>${renderTokens(p)}</p>`).join("")}
     </section>
     ${itemNote}
