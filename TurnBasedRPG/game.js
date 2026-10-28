@@ -31,7 +31,7 @@ const MAX_ANSWER_BALANCE = 4;
 const TONE_ANSWER_OPTIONS = ["1 聲", "2 聲", "3 聲", "4 聲", "˙"];
 const HEALING_SPELL_OPTION_COUNT = 6;
 const HEALING_SPELL_AMOUNT = 10;
-const SPECIAL_ATTACK_CHARGE_REQUIRED = 5;
+const SPECIAL_ATTACK_CHARGE_REQUIRED = 10;
 const SPECIAL_ATTACK_INITIAL_SECONDS = 10;
 const SPECIAL_ATTACK_MIN_SECONDS = 1;
 const ZHUYIN_COMPONENTS = [
@@ -126,9 +126,10 @@ const createState = () => ({
   finished: false,
   player: { hp: 100, maxHp: 100 },
   enemies: createEnemies(),
+  selectedEnemyIndex: null,
   enemyQueue: [],
   quiz: null,
-  normalAttackCount: 0,
+  specialAttackCharge: 0,
   specialStreak: 0
 });
 
@@ -602,11 +603,17 @@ function createSpecialAttackQuiz() {
   };
 }
 
-function animate(element, className) {
+function animate(element, className, duration = 600) {
   element.classList.remove(className);
   void element.offsetWidth;
   element.classList.add(className);
-  window.setTimeout(() => element.classList.remove(className), 600);
+  window.setTimeout(() => element.classList.remove(className), duration);
+}
+
+function animateSpecialChargeGain(fullyCharged) {
+  animate(elements.heroSprite, "guard-motion");
+  animate(elements.specialChargeFill, "special-charge-fill-pop", 650);
+  animate(elements.specialAttackButton, fullyCharged ? "special-charge-complete" : "special-charge-gain", fullyCharged ? 900 : 650);
 }
 
 function addLog(text, className = "") {
@@ -640,6 +647,7 @@ function monsterMarkup(enemy) {
 function renderEnemies() {
   elements.enemyParty.innerHTML = state.enemies.map((enemy, index) => `
     <section class="enemy-unit enemy-unit-${enemy.type}" data-enemy-index="${index}" aria-label="${enemy.name}">
+      <button class="enemy-target" type="button" aria-label="選定攻擊目標：${enemy.name}" aria-pressed="false"><span aria-hidden="true">◎</span></button>
       <div class="enemy-nameplate">
         <strong>${enemy.name}</strong>
         ${enemy.timedDefense ? '<span class="enemy-trait">10 秒限時</span>' : ""}
@@ -665,6 +673,9 @@ function livingEnemyIndexes() {
 }
 
 function updateUI() {
+  const playerCanAct = state.phase === "player" && !state.finished;
+  const choosingTarget = state.phase === "targeting" && !state.finished;
+  elements.enemyParty.classList.toggle("choosing-target", choosingTarget);
   elements.round.textContent = state.round;
   elements.playerHp.textContent = `${state.player.hp.toLocaleString()} / ${state.player.maxHp.toLocaleString()}`;
   elements.playerHpBar.style.width = `${state.player.hp}%`;
@@ -672,39 +683,61 @@ function updateUI() {
     const unit = elements.enemyParty.querySelector(`[data-enemy-index="${index}"]`);
     if (!unit) return;
     unit.classList.toggle("defeated", enemy.hp === 0);
+    const selected = index === state.selectedEnemyIndex;
+    unit.classList.toggle("selected-target", selected && !state.finished);
+    const targetButton = unit.querySelector(".enemy-target");
+    targetButton.disabled = !choosingTarget || enemy.hp === 0;
+    targetButton.setAttribute("aria-pressed", String(selected));
     unit.querySelector(".enemy-hp").style.width = `${enemy.hp / enemy.maxHp * 100}%`;
     unit.querySelector(".enemy-hp-text").textContent = enemy.hp > 0 ? `${enemy.hp} / ${enemy.maxHp}` : "已擊倒";
     const bossTrait = unit.querySelector(".boss-trait");
     if (bossTrait) bossTrait.textContent = `占 2 人・魔王字庫 ${enemy.wordList.length} 字`;
   });
-  const playerCanAct = state.phase === "player" && !state.finished;
-  const specialReady = playerCanAct && state.normalAttackCount >= SPECIAL_ATTACK_CHARGE_REQUIRED;
-  elements.attackButton.disabled = !playerCanAct;
+  elements.attackButton.querySelector("strong").textContent = choosingTarget ? "取消" : "攻擊";
+  elements.attackButton.querySelector(".action-icon").textContent = choosingTarget ? "×" : "⚔";
+  elements.attackButton.querySelector("small").textContent = choosingTarget ? "取消選擇目標" : "對敵人造成傷害";
+  const specialReady = playerCanAct && state.specialAttackCharge >= SPECIAL_ATTACK_CHARGE_REQUIRED;
+  elements.attackButton.disabled = !playerCanAct && !choosingTarget;
   elements.attackButton.classList.toggle("player-ready", playerCanAct);
   elements.specialAttackButton.disabled = !specialReady;
   elements.specialAttackButton.classList.toggle("special-ready", specialReady);
-  elements.specialChargeFill.style.width = `${state.normalAttackCount / SPECIAL_ATTACK_CHARGE_REQUIRED * 100}%`;
-  elements.specialChargeText.textContent = `特殊攻擊充能 ${state.normalAttackCount} / ${SPECIAL_ATTACK_CHARGE_REQUIRED}${specialReady ? "，可以發動" : ""}`;
+  elements.specialChargeFill.style.width = `${state.specialAttackCharge / SPECIAL_ATTACK_CHARGE_REQUIRED * 100}%`;
+  elements.specialChargeText.textContent = `特殊攻擊充能 ${state.specialAttackCharge} / ${SPECIAL_ATTACK_CHARGE_REQUIRED}${specialReady ? "，可以發動" : ""}`;
   elements.specialAttackButton.setAttribute("aria-label", elements.specialChargeText.textContent);
 }
 
+function toggleAttackTargeting() {
+  if (state.finished) return;
+  if (state.phase === "targeting") {
+    state.phase = "player";
+    state.selectedEnemyIndex = null;
+    setMessage("輪到你了", "選擇戰鬥指令", "⚔");
+    updateUI();
+    elements.attackButton.focus();
+  } else if (state.phase === "player") {
+    state.phase = "targeting";
+    state.selectedEnemyIndex = null;
+    setMessage("選擇攻擊目標", "敵人隊伍", "◎");
+    updateUI();
+    elements.enemyParty.querySelector(".enemy-target:not(:disabled)")?.focus();
+  }
+}
+
 async function playerAttack() {
-  if (state.phase !== "player" || state.finished) return;
+  if (state.phase !== "targeting" || state.finished) return;
+  const targetIndex = state.selectedEnemyIndex;
+  const target = state.enemies[targetIndex];
+  if (!target || target.hp <= 0) return;
   state.phase = "busy";
   updateUI();
 
   animate(elements.heroSprite, "attack-motion");
   await wait(220);
 
-  const targetIndex = randomItem(livingEnemyIndexes());
-  const target = state.enemies[targetIndex];
   const damage = randomDamage();
   target.hp = Math.max(0, target.hp - damage);
-  const previousCharge = state.normalAttackCount;
-  state.normalAttackCount = Math.min(SPECIAL_ATTACK_CHARGE_REQUIRED, state.normalAttackCount + 1);
   animate(enemyStage(targetIndex), "hit");
   addLog(`主角攻擊 ${target.name}，造成 ${damage} 點傷害。`);
-  if (previousCharge < SPECIAL_ATTACK_CHARGE_REQUIRED && state.normalAttackCount === SPECIAL_ATTACK_CHARGE_REQUIRED) addLog("特殊攻擊已充能完成！");
   updateUI();
 
   if (livingEnemyIndexes().length === 0) {
@@ -723,8 +756,8 @@ async function beginEnemyTurnAfterPlayerAction() {
 }
 
 async function startSpecialAttack() {
-  if (state.phase !== "player" || state.finished || state.normalAttackCount < SPECIAL_ATTACK_CHARGE_REQUIRED) return;
-  state.normalAttackCount = 0;
+  if (state.phase !== "player" || state.finished || state.specialAttackCharge < SPECIAL_ATTACK_CHARGE_REQUIRED) return;
+  state.specialAttackCharge = 0;
   state.specialStreak = 0;
   state.phase = "special-attack";
   setMessage("特殊攻擊！", "連續答對注音，發動連擊", "✦");
@@ -884,6 +917,11 @@ function showDefenseChallenge() {
   elements.shieldOptions.querySelector("button").focus();
 }
 
+function selectedHealingComponents() {
+  return [...elements.shieldOptions.querySelectorAll('button[aria-pressed="true"]')]
+    .map(option => option.dataset.answer);
+}
+
 function toggleHealingComponent(button) {
   const quiz = state.quiz;
   if (state.phase !== "defense" || !quiz?.healingQuiz || quiz.resolved) return;
@@ -891,8 +929,7 @@ function toggleHealingComponent(button) {
   const selected = button.getAttribute("aria-pressed") === "true";
   button.setAttribute("aria-pressed", String(!selected));
   button.classList.toggle("selected", !selected);
-  quiz.selectedComponents = [...elements.shieldOptions.querySelectorAll('[aria-pressed="true"]')]
-    .map(option => option.dataset.answer);
+  quiz.selectedComponents = selectedHealingComponents();
   elements.spellConfirm.disabled = quiz.selectedComponents.length === 0;
   elements.challengeFeedback.textContent = quiz.selectedComponents.length
     ? `已選：${quiz.selectedComponents.join(" ")}`
@@ -915,6 +952,7 @@ function healLivingEnemies(amount) {
 async function resolveHealingSpell() {
   const quiz = state.quiz;
   if (state.phase !== "defense" || !quiz?.healingQuiz || quiz.resolved) return;
+  quiz.selectedComponents = selectedHealingComponents();
   quiz.resolved = true;
   const correct = sameComponents(quiz.selectedComponents, quiz.correctComponents);
   const weightChange = recordQuizResult(quiz.character, correct, quiz.candidateCharacters);
@@ -937,11 +975,11 @@ async function resolveHealingSpell() {
   }
 
   state.phase = "correction";
-  elements.challengeFeedback.textContent = `組合不正確。「${quiz.character}」需要 ${quiz.correctComponents.join(" ")}（${quiz.pronunciation}）。確認後治療咒語將會生效。`;
+  elements.challengeFeedback.textContent = `你選了：${quiz.selectedComponents.join(" ") || "未選取"}。組合不正確。「${quiz.character}」需要 ${quiz.correctComponents.join(" ")}（${quiz.pronunciation}）。確認後治療咒語將會生效。`;
   elements.challengeFeedback.classList.add("failure");
   elements.correctionConfirm.hidden = false;
   elements.correctionConfirm.focus();
-  addLog(`請確認：「${quiz.character}」的完整注音是 ${quiz.pronunciation}。`);
+  addLog(`治療組字判定：已選 ${quiz.selectedComponents.join(" ") || "未選取"}；正解 ${quiz.correctComponents.join(" ")}。請確認：「${quiz.character}」的完整注音是 ${quiz.pronunciation}。`);
   addWeightChangeLog(quiz.character, false, weightChange);
 }
 
@@ -1154,6 +1192,18 @@ async function completeDefense(blocked) {
   elements.spellConfirm.hidden = true;
   elements.challenge.hidden = true;
 
+  if (blocked && !quiz.healingQuiz) {
+    const previousCharge = state.specialAttackCharge;
+    state.specialAttackCharge = Math.min(SPECIAL_ATTACK_CHARGE_REQUIRED, state.specialAttackCharge + 1);
+    const fullyCharged = previousCharge < SPECIAL_ATTACK_CHARGE_REQUIRED && state.specialAttackCharge === SPECIAL_ATTACK_CHARGE_REQUIRED;
+    addLog(`成功防禦，特殊攻擊充能 ${state.specialAttackCharge} / ${SPECIAL_ATTACK_CHARGE_REQUIRED}。`);
+    if (fullyCharged) {
+      addLog("特殊攻擊已充能完成！");
+    }
+    updateUI();
+    animateSpecialChargeGain(fullyCharged);
+  }
+
   if (!blocked && !quiz.healingQuiz) {
     state.player.hp = Math.max(0, state.player.hp - quiz.damage);
     animate(elements.heroSprite, "hit");
@@ -1247,7 +1297,21 @@ function restart() {
   elements.attackButton.focus();
 }
 
-elements.attackButton.addEventListener("click", playerAttack);
+elements.attackButton.addEventListener("click", toggleAttackTargeting);
+elements.enemyParty.addEventListener("click", (event) => {
+  const button = event.target.closest(".enemy-target");
+  if (!button || button.disabled || state.phase !== "targeting" || state.finished) return;
+  const index = Number(button.closest("[data-enemy-index]").dataset.enemyIndex);
+  if (!state.enemies[index]?.hp) return;
+  state.selectedEnemyIndex = index;
+  playerAttack();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.phase === "targeting") {
+    event.preventDefault();
+    toggleAttackTargeting();
+  }
+});
 elements.specialAttackButton.addEventListener("click", startSpecialAttack);
 elements.shieldOptions.addEventListener("click", (event) => {
   const shield = event.target.closest("[data-answer]");
