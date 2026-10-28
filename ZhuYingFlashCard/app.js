@@ -4,10 +4,9 @@ const INFO_VERSION = "2026-07-16-1";
 const MAX_VALID_RESPONSE_SECONDS = 20;
 const MAX_TIME_SAMPLES_PER_SYMBOL = 18;
 const UNANSWERED_SYMBOL_WEIGHT = 1.75;
-const WRONG_WEIGHT_BASE = 2.15;
-const CORRECT_WEIGHT_BASE = 0.72;
-const MIN_SYMBOL_WEIGHT = 0.16;
-const MAX_SYMBOL_WEIGHT = 30;
+const WEIGHT_EXPONENT_BASE = 3;
+const MIN_ANSWER_BALANCE = -4;
+const MAX_ANSWER_BALANCE = 4;
 
 const ZHUYIN_SYMBOLS = [
   { symbol: "ㄅ", group: "聲母" },
@@ -81,6 +80,7 @@ function createEmptyState() {
           correct: 0,
           wrong: 0,
           seen: 0,
+          balance: 0,
           validCorrectTimes: []
         }
       ])
@@ -108,11 +108,16 @@ function loadState() {
       const savedSymbol = saved.symbols?.[symbol] || {};
       const correct = Number(savedSymbol.correct) || 0;
       const wrong = Number(savedSymbol.wrong) || 0;
+      const savedBalance = Number(savedSymbol.balance);
+      const balance = Number.isFinite(savedBalance)
+        ? savedBalance
+        : wrong - correct;
 
       merged.symbols[symbol] = {
         correct,
         wrong,
         seen: Number(savedSymbol.seen) || correct + wrong,
+        balance: clamp(Math.round(balance), MIN_ANSWER_BALANCE, MAX_ANSWER_BALANCE),
         validCorrectTimes: Array.isArray(savedSymbol.validCorrectTimes)
           ? savedSymbol.validCorrectTimes
               .map(Number)
@@ -150,18 +155,8 @@ function allValidTimes() {
 
 function calculateWeight(symbol) {
   const stats = state.symbols[symbol];
-  if (stats.seen === 0) {
-    return UNANSWERED_SYMBOL_WEIGHT;
-  }
-
-  const mistakeDebt = Math.max(0, stats.wrong - stats.correct);
-  const masteryCredit = Math.max(0, stats.correct - stats.wrong);
-  const answerMultiplier =
-    mistakeDebt > 0
-      ? WRONG_WEIGHT_BASE ** mistakeDebt
-      : CORRECT_WEIGHT_BASE ** Math.max(1, masteryCredit);
-
-  return clamp(answerMultiplier, MIN_SYMBOL_WEIGHT, MAX_SYMBOL_WEIGHT);
+  const balance = clamp(Math.round(Number(stats.balance) || 0), MIN_ANSWER_BALANCE, MAX_ANSWER_BALANCE);
+  return UNANSWERED_SYMBOL_WEIGHT * WEIGHT_EXPONENT_BASE ** balance;
 }
 
 function weightedPick() {
@@ -210,6 +205,7 @@ function answer(isCorrect) {
 
   if (isCorrect) {
     stats.correct += 1;
+    stats.balance = clamp(stats.balance - 1, MIN_ANSWER_BALANCE, MAX_ANSWER_BALANCE);
     state.correctTotal += 1;
 
     if (elapsedSeconds <= MAX_VALID_RESPONSE_SECONDS) {
@@ -218,6 +214,7 @@ function answer(isCorrect) {
     }
   } else {
     stats.wrong += 1;
+    stats.balance = clamp(stats.balance + 1, MIN_ANSWER_BALANCE, MAX_ANSWER_BALANCE);
     state.wrongTotal += 1;
   }
 
@@ -241,7 +238,7 @@ function renderSymbolList() {
     weight: calculateWeight(item.symbol)
   })).sort((a, b) => {
     if (b.weight === a.weight) {
-      return b.stats.wrong - a.stats.wrong;
+      return b.stats.balance - a.stats.balance || b.stats.wrong - a.stats.wrong;
     }
 
     return b.weight - a.weight;
@@ -252,7 +249,7 @@ function renderSymbolList() {
   elements.symbolList.replaceChildren(
     ...rows.map((row) => {
       const averageTime = average(row.stats.validCorrectTimes);
-      const mistakeDebt = Math.max(0, row.stats.wrong - row.stats.correct);
+      const balanceLabel = row.stats.balance > 0 ? `+${row.stats.balance}` : `${row.stats.balance}`;
       const rowElement = document.createElement("article");
       const width = `${Math.max(6, (row.weight / maxWeight) * 100).toFixed(1)}%`;
 
@@ -267,7 +264,7 @@ function renderSymbolList() {
           <span class="meter" aria-hidden="true">
             <span class="meter-fill" style="--meter-width: ${width}"></span>
           </span>
-          <span class="symbol-details">欠熟 ${mistakeDebt} · 平均 ${averageTime === null ? "—" : `${averageTime.toFixed(1)}s`}</span>
+          <span class="symbol-details">差值 ${balanceLabel} · 平均 ${averageTime === null ? "—" : `${averageTime.toFixed(1)}s`}</span>
         </span>
       `;
 
