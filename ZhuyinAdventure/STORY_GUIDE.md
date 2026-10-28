@@ -219,6 +219,26 @@ key_room: {
 
 如果玩家還沒有 `requires` 指定的道具，這扇門會顯示為鎖住狀態。
 
+### 條件採集與特殊入口
+
+火山研究站故事另使用以下選填欄位，舊故事不需要修改：
+
+- 房間的 `name` 與 `title` 都使用逐字注音陣列，`type` 記錄房間類型。
+- 房間的 `itemRequires` 指定採集所需道具；玩家仍能進入房間，但只有持有該道具時才會取得 `givesItem`。
+- `itemDescription` 顯示取得物品的文字，`itemLockedDescription` 顯示缺少採集道具時的文字。
+- 門的 `visibleRequires` 指定顯示入口所需的道具；例如取得火山石後，研究站才顯示研究室入口。
+- 房間的 `requires` 也檢查網址與已保存的進度，避免直接跳入尚未解鎖的研究室或結局。
+- 門與返回按鈕的 `icon` 使用目的地房間圖示。
+
+在 `ZhuyinAdventure` 資料夾執行以下指令，驗證火山故事的語法、核准描述、注音、地圖、道具條件與引擎遊玩流程：
+
+```sh
+node --check story.js
+node scripts/validate_story.js story.js
+```
+
+`story.zip` 內只有 `story.js`，搭配本專案已更新的 `engine.js` 使用。
+
 ## 內建介面文字
 
 以下標準介面文字由 `engine.js` 提供，通常不需要放在 `story.js`：

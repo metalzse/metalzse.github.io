@@ -405,30 +405,38 @@ function showGameInfoDialog() {
 
 function renderRoom(roomId) {
   const app = document.getElementById("app");
-  const room = STORY.rooms[roomId] || STORY.rooms[STORY.startRoom];
+  let room = STORY.rooms[roomId] || STORY.rooms[STORY.startRoom];
+  // Also guard direct URLs and saved progress, not only door clicks.
+  if (room.requires && !hasItem(room.requires)) {
+    room = STORY.rooms[STORY.startRoom];
+  }
 
   localStorage.setItem(stateKey, room.id);
 
-  if (room.givesItem && !hasItem(room.givesItem)) {
+  const canCollectItem = !room.itemRequires || hasItem(room.itemRequires);
+  if (room.givesItem && canCollectItem && !hasItem(room.givesItem)) {
     addItem(room.givesItem);
   }
 
   const itemNote = room.givesItem && STORY.items ? `
-    <p class="item-note">🎒 ${renderTokens(label("gotItem"))} ${renderTokens(itemName(room.givesItem))}</p>
+    <p class="item-note">${room.itemDescription || room.itemLockedDescription
+      ? renderTokens(canCollectItem ? room.itemDescription : room.itemLockedDescription)
+      : `🎒 ${renderTokens(label("gotItem"))} ${renderTokens(itemName(room.givesItem))}`}</p>
   ` : "";
 
-  const doors = (room.doors || []).map(door => {
+  const doors = (room.doors || []).filter(door => !door.visibleRequires || hasItem(door.visibleRequires)).map(door => {
+    const icon = door.icon ? `${escapeHtml(door.icon)} ` : "";
     if (doorIsLocked(door)) {
       return `
         <div class="door locked">
-          <strong>${renderTokens(door.name)}</strong><br>
+          <strong>${icon}${renderTokens(door.name)}</strong><br>
           <span class="small">${renderTokens(door.lockedDescription || label("locked"))}</span>
         </div>
       `;
     }
     return `
       <a class="door" href="#${escapeHtml(door.to)}" data-room="${escapeHtml(door.to)}">
-        <strong>${renderTokens(door.name)}</strong><br>
+        <strong>${icon}${renderTokens(door.name)}</strong><br>
         <span class="small">${renderTokens(door.description)}</span>
       </a>
     `;
@@ -436,7 +444,7 @@ function renderRoom(roomId) {
 
   const back = room.back ? `
     <a class="door back" href="#${escapeHtml(room.back.to)}" data-room="${escapeHtml(room.back.to)}">
-      ⬅ ${renderTokens(room.back.label)}
+      ${escapeHtml(room.back.icon || "⬅")} ${renderTokens(room.back.label)}
     </a>
   ` : "";
 
@@ -451,6 +459,7 @@ function renderRoom(roomId) {
 
   app.innerHTML = `
     <header class="page-header">
+      ${STORY.labels?.storyTitle ? `<p>${renderTokens(STORY.labels.storyTitle)}</p>` : ""}
       ${renderDifficultyControls()}
     </header>
     <h1>${renderRoomTitle(room)}</h1>
